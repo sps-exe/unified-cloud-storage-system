@@ -1,0 +1,29 @@
+{
+  "name": "ucss",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Unified Cloud Storage System — multi-account Google Drive file manager",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "db:generate": "turbo run db:generate",
+    "db:migrate": "turbo run db:migrate",
+    "db:seed": "turbo run db:seed",
+    "db:studio": "pnpm --filter @ucss/database exec prisma studio",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "prettier": "^3.3.3",
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2",
+    "esbuild": "^0.28.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@11.22.0"
+}

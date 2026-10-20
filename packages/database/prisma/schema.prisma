@@ -1,0 +1,328 @@
+// =============================================================================
+// UCSS — Prisma Schema
+// Version: 1.0.0
+// 
+// PHILOSOPHY:
+//   - Every column has a purpose. No column was added "just in case."
+//   - ENUMs are defined in PostgreSQL (not just Prisma) for DB-level enforcement.
+//   - bigint is used for all byte/size values — never Float, never String math.
+//   - Timestamps are always TIMESTAMPTZ (timezone-aware). Never naive DateTime.
+//   - Soft delete: files and accounts are never physically deleted by the app.
+//   - The database enforces business rules, not just the application layer.
+//
+// RAW SQL NOTE:
+//   Complex queries (allocation, reporting, reconciliation) use prisma.$queryRaw
+//   or a direct pg.Pool client. See packages/database/src/queries/ for all raw SQL.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// ENUMS
+// These are PostgreSQL native ENUMs — enforced at the DB level, not just app.
+// Adding a new value requires a migration (ALTER TYPE ... ADD VALUE).
+// =============================================================================
+
+/// Status of a connected Google Drive account in the application.
+/// ACTIVE        — Token valid, quota known, ready to accept files.
+/// SUSPENDED     — Account manually disconnected or flagged by admin.
+/// TOKEN_EXPIRED — OAuth refresh token invalid; user must re-authorize.
+/// QUOTA_EXCEEDED— Drive reported storageQuotaExceeded on last upload attempt.
+/// DISCONNECTED  — User initiated disconnect; soft state before cleanup.
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  TOKEN_EXPIRED
+  QUOTA_EXCEEDED
+  DISCONNECTED
+}
+
+/// Lifecycle state of a file upload operation.
+/// PENDING   — DB record created, account selected, upload not yet started.
+/// UPLOADING — Upload stream in progress to Google Drive.
+/// COMPLETED — Drive returned a file ID; DB record fully updated.
+/// FAILED    — Upload attempt failed; retry may be scheduled.
+/// ORPHANED  — File exists on Drive but no valid DB record, OR DB record
+///             exists but file confirmed absent from Drive.
+/// CANCELLED — User or system explicitly cancelled before completion.
+enum UploadStatus {
+  PENDING
+  UPLOADING
+  COMPLETED
+  FAILED
+  ORPHANED
+  CANCELLED
+}
+
+// =============================================================================
+// USERS
+// Minimal user model. Single-user for MVP — auth scaffolding ready for multi.
+// =============================================================================
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  // Display name — optional, defaults to email prefix on first login
+  displayName  String?  @map("display_name") @db.VarChar(100)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  driveAccounts DriveAccount[]
+  files         File[]
+
+  @@map("users")
+}
+
+// =============================================================================
+// CONNECTED_DRIVE_ACCOUNTS
+// One record per Google Drive account connected to the application.
+// Each account can hold many files. The encrypted refresh token is the key
+// that lets the backend generate fresh access tokens without user interaction.
+//
+// CRITICAL DESIGN DECISIONS:
+//   - encryptedRefreshToken: AES-256-GCM encrypted. The plaintext NEVER touches
+//     the DB. Decryption happens in-process only when needed.
+//   - reservedBytes: Tracks bytes currently "claimed" by in-flight uploads.
+//     This prevents double-allocation when two uploads run concurrently.
+//     Released when upload completes, fails, or is cancelled.
+//   - quotaUsedBytes: Last known value from Drive API. MAY BE STALE.
+//     Never assume it's real-time. Always add reservedBytes to get safe estimate.
+//   - quotaLastSyncedAt: When we last called /about?fields=storageQuota.
+//     If this is >5 minutes ago, treat quota data as potentially stale.
+// =============================================================================
+
+model DriveAccount {
+  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                String        @map("user_id") @db.Uuid
+  // The Google email associated with this Drive account (for display only)
+  googleEmail           String        @map("google_email") @db.VarChar(255)
+  // Google's internal account ID — more stable than email (email can change)
+  googleAccountId       String        @map("google_account_id") @db.VarChar(100)
+  // AES-256-GCM encrypted: "iv:authTag:ciphertext" — all hex-encoded
+  encryptedRefreshToken String        @map("encrypted_refresh_token") @db.Text
+  status                AccountStatus @default(ACTIVE)
+  // Quota fields — all in BYTES (bigint). Never store as GB float.
+  quotaLimitBytes       BigInt        @default(0) @map("quota_limit_bytes") @db.BigInt
+  quotaUsedBytes        BigInt        @default(0) @map("quota_used_bytes") @db.BigInt
+  // reservedBytes: sum of size_bytes of all PENDING/UPLOADING files on this account.
+  // Managed via pg_advisory_xact_lock to prevent concurrent over-allocation.
+  reservedBytes         BigInt        @default(0) @map("reserved_bytes") @db.BigInt
+  quotaLastSyncedAt     DateTime?     @map("quota_last_synced_at") @db.Timestamptz()
+  connectedAt           DateTime      @default(now()) @map("connected_at") @db.Timestamptz()
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz()
+  lastVerifiedAt        DateTime?     @map("last_verified_at") @db.Timestamptz()
+  // Disconnection tracking — when null, account is active or suspended
+  disconnectedAt        DateTime?     @map("disconnected_at") @db.Timestamptz()
+
+  // Relations
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  files            File[]
+  uploadOperations UploadOperation[]
+  storageSnapshots StorageSnapshot[]
+
+  // Constraints
+  // A user cannot connect the same Google account twice
+  @@unique([userId, googleAccountId], name: "uq_user_google_account")
+  // Index for fast account lookup by user (most common query pattern)
+  @@index([userId, status], name: "idx_drive_accounts_user_status")
+  @@map("drive_accounts")
+}
+
+// =============================================================================
+// FILES
+// One record per file managed by UCSS. The application's source of truth.
+//
+// CRITICAL DESIGN DECISIONS:
+//   - id vs driveFileId: id is OUR primary key (UUID we generate). driveFileId
+//     is Google's identifier for the same file. They are DIFFERENT things.
+//     NEVER use driveFileId as a foreign key in other tables. Use our id.
+//   - displayFilename vs originalFilename: originalFilename is what the user
+//     uploaded. displayFilename is what we show (editable via rename).
+//     Rename updates displayFilename; originalFilename is immutable.
+//   - sizeBytes: exact byte count. Never rounded. Source of truth for quota math.
+//   - checksumSha256: Populated after upload. Used for deduplication (V2).
+//     NULL if upload is still in progress.
+//   - uploadStatus: The state machine. See UploadStatus enum above.
+//   - isDeleted + deletedAt: Soft delete. Physical DB row is never deleted by
+//     the application. Reconciliation and cleanup jobs may hard-delete later.
+//   - driveFileId: NULL until upload completes. A record with uploadStatus=COMPLETED
+//     and driveFileId=NULL is an inconsistency — reconciliation must flag it.
+// =============================================================================
+
+model File {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String       @map("user_id") @db.Uuid
+  driveAccountId  String       @map("drive_account_id") @db.Uuid
+  // driveFileId: Google's file ID. NULL until upload is confirmed complete.
+  // e.g., "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
+  driveFileId     String?      @map("drive_file_id") @db.VarChar(255)
+  originalFilename String      @map("original_filename") @db.VarChar(1000)
+  displayFilename  String      @map("display_filename") @db.VarChar(1000)
+  mimeType        String       @default("application/octet-stream") @map("mime_type") @db.VarChar(255)
+  // sizeBytes: exact size in bytes. Must be > 0. Validated before upload starts.
+  sizeBytes       BigInt       @map("size_bytes") @db.BigInt
+  uploadStatus    UploadStatus @default(PENDING) @map("upload_status")
+  // SHA-256 of file contents. Populated post-upload. NULL during upload.
+  checksumSha256  String?      @map("checksum_sha256") @db.Char(64)
+  // Soft delete fields
+  isDeleted       Boolean      @default(false) @map("is_deleted")
+  deletedAt       DateTime?    @map("deleted_at") @db.Timestamptz()
+  // remoteModifiedAt: Last-modified timestamp from Drive API. Used for reconciliation.
+  remoteModifiedAt DateTime?   @map("remote_modified_at") @db.Timestamptz()
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  driveAccount     DriveAccount     @relation(fields: [driveAccountId], references: [id], onDelete: Restrict)
+  uploadOperations UploadOperation[]
+
+  // Constraints
+  // A driveFileId must be unique per drive account (can't have two records for same Drive file)
+  @@unique([driveAccountId, driveFileId], name: "uq_drive_file_per_account")
+  // PRIMARY lookup: user's active files — the most common query in the entire app
+  // Partial index (only non-deleted) keeps it small and fast
+  @@index([userId, isDeleted, createdAt(sort: Desc)], name: "idx_files_user_active")
+  // Secondary: filter by MIME type for "show me all videos" queries
+  @@index([userId, mimeType, isDeleted], name: "idx_files_user_mime")
+  // For reconciliation: find all uploads stuck in non-terminal states
+  @@index([uploadStatus, updatedAt], name: "idx_files_upload_status")
+  // For reconciliation: look up by Drive file ID (checking if orphan exists on Drive)
+  @@index([driveFileId], name: "idx_files_drive_file_id")
+  @@map("files")
+}
+
+// =============================================================================
+// UPLOAD_OPERATIONS
+// Audit log and retry tracker for every upload attempt.
+// One File can have multiple UploadOperations (initial + retries).
+//
+// WHY A SEPARATE TABLE?
+//   Because a File is what the user cares about.
+//   An UploadOperation is the engineering machinery that gets it there.
+//   Separating them means we can: retry without mutating the file record,
+//   keep a full history of attempts, and query per-account failure rates.
+//
+// DESIGN DECISIONS:
+//   - Each retry creates a NEW UploadOperation record, not an update.
+//     This preserves full history. The "current" operation is MAX(startedAt)
+//     or the one with status != COMPLETED/FAILED.
+//   - googleUploadSessionUri: The resumable upload session URL from Drive API.
+//     If the process crashes mid-upload, we can resume using this URI (V2).
+//   - durationMs: Populated on completion. Used for performance analytics.
+// =============================================================================
+
+model UploadOperation {
+  id                    String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fileId                String       @map("file_id") @db.Uuid
+  driveAccountId        String       @map("drive_account_id") @db.Uuid
+  status                UploadStatus @default(PENDING)
+  retryCount            Int          @default(0) @map("retry_count")
+  maxRetries            Int          @default(3) @map("max_retries")
+  errorMessage          String?      @map("error_message") @db.Text
+  errorCode             String?      @map("error_code") @db.VarChar(100)
+  // Google's resumable upload session URL — for future resumable upload support
+  googleUploadSessionUri String?     @map("google_upload_session_uri") @db.Text
+  // Byte offset for resumable uploads — how much Drive has confirmed receiving
+  bytesUploadedToDate   BigInt       @default(0) @map("bytes_uploaded_to_date") @db.BigInt
+  startedAt             DateTime     @default(now()) @map("started_at") @db.Timestamptz()
+  completedAt           DateTime?    @map("completed_at") @db.Timestamptz()
+  // Duration in milliseconds — for performance monitoring
+  durationMs            Int?         @map("duration_ms")
+  updatedAt             DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  file         File         @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  driveAccount DriveAccount @relation(fields: [driveAccountId], references: [id], onDelete: Restrict)
+
+  // Indexes
+  // Reconciliation: find uploads stuck in UPLOADING state for >N minutes
+  @@index([status, startedAt], name: "idx_upload_ops_status_started")
+  // Retry worker: find FAILED operations eligible for retry
+  @@index([fileId, status], name: "idx_upload_ops_file_status")
+  // Per-account failure analysis
+  @@index([driveAccountId, status], name: "idx_upload_ops_account_status")
+  @@map("upload_operations")
+}
+
+// =============================================================================
+// STORAGE_SNAPSHOTS
+// Point-in-time record of each account's quota usage from the Drive API.
+// Used for: trend analysis, detecting quota drift, audit trail.
+//
+// WHY NOT JUST USE drive_accounts.quotaUsedBytes?
+//   Because that column is the CURRENT estimate. This table is HISTORY.
+//   You can answer: "how much storage were we using 3 days ago?"
+//   You can detect: "account X's usage jumped 2GB overnight — why?"
+//
+// DESIGN: Insert-only. Never update. Append rows on every quota sync.
+// =============================================================================
+
+model StorageSnapshot {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  driveAccountId    String   @map("drive_account_id") @db.Uuid
+  quotaLimitBytes   BigInt   @map("quota_limit_bytes") @db.BigInt
+  quotaUsedBytes    BigInt   @map("quota_used_bytes") @db.BigInt
+  usageInDrive      BigInt   @map("usage_in_drive") @db.BigInt
+  usageInTrash      BigInt   @map("usage_in_trash") @db.BigInt
+  // Number of files UCSS has stored in this account at time of snapshot
+  managedFileCount  Int      @default(0) @map("managed_file_count")
+  capturedAt        DateTime @default(now()) @map("captured_at") @db.Timestamptz()
+
+  // Relations
+  driveAccount DriveAccount @relation(fields: [driveAccountId], references: [id], onDelete: Cascade)
+
+  // Index for time-series queries: "show me snapshots for account X over last 7 days"
+  @@index([driveAccountId, capturedAt(sort: Desc)], name: "idx_snapshots_account_time")
+  @@map("storage_snapshots")
+}
+
+// =============================================================================
+// AUDIT_LOGS
+// Immutable record of security-relevant and state-changing operations.
+// Who did what, to which resource, when, and from where.
+//
+// WHY IS THIS A SEPARATE TABLE AND NOT JUST LOGGING?
+//   1. Logs can be rotated, lost, or filtered. DB audit trail is permanent.
+//   2. Logs can't be efficiently queried. This table can be indexed and JOINed.
+//   3. Required for: "who deleted this file?", "when was this account connected?",
+//      "how many failed login attempts from this IP?"
+//
+// INSERT ONLY. Never update or delete. Immutable by design.
+// In production: consider append-only access role for this table.
+// =============================================================================
+
+model AuditLog {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  // userId: NULL for unauthenticated events (failed logins, probe attempts)
+  userId       String?  @map("user_id") @db.Uuid
+  // Action categories: AUTH, FILE, ACCOUNT, ADMIN, SYSTEM
+  action       String   @db.VarChar(100)
+  // The resource type and ID affected by this action
+  resourceType String?  @map("resource_type") @db.VarChar(50)
+  resourceId   String?  @map("resource_id") @db.Uuid
+  // Snapshot of relevant data at the time of the event (immutable JSON)
+  metadata     Json?    @db.Json
+  // IP address of the request origin — for security analysis
+  ipAddress    String?  @map("ip_address") @db.Inet
+  userAgent    String?  @map("user_agent") @db.VarChar(500)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Indexes
+  // Security: find all actions by a user
+  @@index([userId, createdAt(sort: Desc)], name: "idx_audit_user_time")
+  // Forensics: find all actions on a specific file/account
+  @@index([resourceType, resourceId, createdAt(sort: Desc)], name: "idx_audit_resource")
+  // Security: find all events from a specific IP
+  @@index([ipAddress, createdAt(sort: Desc)], name: "idx_audit_ip")
+  @@map("audit_logs")
+}
