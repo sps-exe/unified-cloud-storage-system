@@ -115,6 +115,11 @@ export function App() {
   // Initial load
   useEffect(() => {
     fetchProfileAndStorage();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('connected') === 'true') {
+      setIsAccountsOpen(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, [fetchProfileAndStorage]);
 
   // Once authenticated, load accounts & files

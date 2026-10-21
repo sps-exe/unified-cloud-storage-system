@@ -49,13 +49,19 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
   };
 
   const handleConnectLive = async () => {
+    setLoading(true);
     try {
-      const res = await api.request<{ authUrl: string }>('/api/oauth/google/connect');
-      if (res.ok && res.data.authUrl) {
-        window.location.href = res.data.authUrl;
+      const res = await api.request<{ authUrl?: string; url?: string }>('/api/oauth/google/connect');
+      const targetUrl = res.data?.authUrl || res.data?.url;
+      if (targetUrl) {
+        window.location.href = targetUrl;
+      } else {
+        alert('Could not retrieve Google authorization URL. Please try again.');
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to generate OAuth URL');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -97,10 +103,14 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
           <button
             onClick={handleConnectLive}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/25 transition"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/25 transition disabled:opacity-50"
           >
-            <Plus className="h-4 w-4" />
-            <span>Connect Google Drive Account</span>
+            {loading ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
+            <span>{loading ? 'Connecting to Google...' : 'Connect Google Drive Account'}</span>
           </button>
 
           <button

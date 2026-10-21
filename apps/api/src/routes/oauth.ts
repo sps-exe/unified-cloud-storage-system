@@ -21,9 +21,9 @@ oauthRouter.get(
     const userId = req.user!.id;
     const url = GoogleDriveService.getAuthorizationUrl(userId);
 
-    const response: ApiResponse<{ url: string }> = {
+    const response: ApiResponse<{ url: string; authUrl: string }> = {
       ok: true,
-      data: { url },
+      data: { url, authUrl: url },
     };
 
     res.status(200).json(response);
@@ -60,7 +60,8 @@ oauthRouter.get(
       }
 
       // Otherwise redirect back to frontend dashboard
-      res.redirect(`${env.FRONTEND_URL}/accounts?connected=true&email=${encodeURIComponent(account.googleEmail)}`);
+      const origin = req.headers.host ? `${req.protocol}://${req.headers.host}` : env.FRONTEND_URL;
+      res.redirect(`${origin}/?connected=true&email=${encodeURIComponent(account.googleEmail)}`);
     } catch (error) {
       next(error);
     }

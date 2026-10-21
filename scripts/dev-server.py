@@ -25,7 +25,7 @@ def get_pid():
 
     # Fallback: check who is listening on PORT
     try:
-        res = subprocess.run(["lsof", "-ti", f":{PORT}"], capture_output=True, text=True)
+        res = subprocess.run(["lsof", "-ti", "-sTCP:LISTEN", f":{PORT}"], capture_output=True, text=True)
         if res.returncode == 0 and res.stdout.strip():
             pid = int(res.stdout.strip().splitlines()[0])
             with open(PID_FILE, "w") as f:
