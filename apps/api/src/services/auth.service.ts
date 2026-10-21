@@ -54,13 +54,13 @@ export class AuthService {
     const accessToken = jwt.sign(
       { sub: userId, email },
       env.JWT_ACCESS_SECRET,
-      { expiresIn: env.JWT_ACCESS_EXPIRES_IN as jwt.SignOptions['expiresIn'] },
+      { expiresIn: (env.JWT_ACCESS_EXPIRES_IN || '15m') as any },
     );
 
     const refreshToken = jwt.sign(
       { sub: userId, email, type: 'refresh' },
       env.JWT_REFRESH_SECRET,
-      { expiresIn: env.JWT_REFRESH_EXPIRES_IN as jwt.SignOptions['expiresIn'] },
+      { expiresIn: (env.JWT_REFRESH_EXPIRES_IN || '7d') as any },
     );
 
     return { accessToken, refreshToken };
@@ -222,7 +222,7 @@ export class AuthService {
       const accessToken = jwt.sign(
         { sub: user.id, email: user.email },
         env.JWT_ACCESS_SECRET,
-        { expiresIn: env.JWT_ACCESS_EXPIRES_IN as jwt.SignOptions['expiresIn'] },
+        { expiresIn: (env.JWT_ACCESS_EXPIRES_IN || '15m') as any },
       );
 
       return accessToken;

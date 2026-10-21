@@ -159,7 +159,7 @@ filesRouter.post('/upload', requireAuth, handleMultipart, async (req: Request, r
         displayFilename,
         fileSizeBytes,
         mimeType: file.mimetype,
-        driveAccountId: requestedDriveAccountId,
+        ...(requestedDriveAccountId ? { driveAccountId: requestedDriveAccountId } : {}),
       });
       fileId = alloc.fileId;
       uploadOperationId = alloc.uploadOperationId;
@@ -248,10 +248,17 @@ filesRouter.get('/', requireAuth, validateQuery(listFilesQuerySchema), async (re
   try {
     const userId = req.user!.id;
     const query = (req as unknown as { parsedQuery: z.infer<typeof listFilesQuerySchema> }).parsedQuery;
-    const result = await FilesService.listFiles(userId, {
-      ...query,
+    const cleanQuery: Record<string, unknown> = {
+      page: query.page,
+      pageSize: query.pageSize,
+      sortBy: query.sortBy,
       sortOrder: (query.sortOrder?.toLowerCase() as 'asc' | 'desc') || 'desc',
-    });
+    };
+    if (query.search) cleanQuery.search = query.search;
+    if (query.driveAccountId) cleanQuery.driveAccountId = query.driveAccountId;
+    if (query.mimeType) cleanQuery.mimeType = query.mimeType;
+
+    const result = await FilesService.listFiles(userId, cleanQuery as any);
     res.json({
       ok: true,
       data: result.files,
@@ -269,7 +276,8 @@ filesRouter.get('/', requireAuth, validateQuery(listFilesQuerySchema), async (re
 filesRouter.get('/:id', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.id;
-    const file = await FilesService.getFile(userId, req.params.id);
+    const fileId = String(req.params.id || '');
+    const file = await FilesService.getFile(userId, fileId);
     res.json({
       ok: true,
       data: file,
@@ -286,7 +294,8 @@ filesRouter.get('/:id', requireAuth, async (req: Request, res: Response, next: N
 filesRouter.get('/:id/download', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.id;
-    const { file, encryptedRefreshToken } = await FilesService.prepareDownload(userId, req.params.id);
+    const fileId = String(req.params.id || '');
+    const { file, encryptedRefreshToken } = await FilesService.prepareDownload(userId, fileId);
 
     if (!file.driveFileId) {
       throw new AppError(404, 'FILE_NOT_READY', 'File content is not ready or has no Drive reference');
@@ -324,7 +333,8 @@ filesRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user!.id;
-      const updated = await FilesService.renameFile(userId, req.params.id, req.body.displayFilename);
+      const fileId = String(req.params.id || '');
+      const updated = await FilesService.renameFile(userId, fileId, req.body.displayFilename);
       res.json({
         ok: true,
         data: updated,
@@ -342,7 +352,8 @@ filesRouter.patch(
 filesRouter.delete('/:id', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.id;
-    const result = await FilesService.softDeleteFile(userId, req.params.id);
+    const fileId = String(req.params.id || '');
+    const result = await FilesService.softDeleteFile(userId, fileId);
     res.json({
       ok: true,
       data: result,

@@ -40,7 +40,7 @@ accountsRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user!.id;
-      const accountId = req.params['id']!;
+      const accountId = String(req.params['id'] || '');
 
       const updated = await AccountsService.syncAccount(userId, accountId);
 
@@ -63,7 +63,7 @@ accountsRouter.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user!.id;
-      const accountId = req.params['id']!;
+      const accountId = String(req.params['id'] || '');
 
       const result = await AccountsService.disconnectAccount(userId, accountId);
 

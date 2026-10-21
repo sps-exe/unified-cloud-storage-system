@@ -3,7 +3,7 @@
 // =============================================================================
 
 import type { Request, Response, NextFunction } from 'express';
-import type { ZodSchema } from 'zod';
+import type { ZodType } from 'zod';
 import { AppError, ValidationError, UnauthorizedError } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../lib/env.js';
@@ -59,7 +59,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
  * validateBody — Validates req.body against a Zod schema.
  * Returns 400 with field-level errors if validation fails.
  */
-export function validateBody<T>(schema: ZodSchema<T>) {
+export function validateBody<T>(schema: ZodType<T, any, any>) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req.body);
     if (!result.success) {
@@ -78,7 +78,7 @@ export function validateBody<T>(schema: ZodSchema<T>) {
 /**
  * validateQuery — Validates req.query against a Zod schema.
  */
-export function validateQuery<T>(schema: ZodSchema<T>) {
+export function validateQuery<T>(schema: ZodType<T, any, any>) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req.query);
     if (!result.success) {

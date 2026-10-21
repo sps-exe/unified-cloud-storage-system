@@ -39,10 +39,11 @@ export function createApp() {
   });
 
   // ─── Security Headers ───────────────────────────────────────────────────────
-  app.use(helmet({
-    // Content-Security-Policy: restrict what resources can be loaded
-    contentSecurityPolicy: env.NODE_ENV === 'production' ? undefined : false,
-  }));
+  app.use(helmet(
+    env.NODE_ENV === 'production'
+      ? undefined
+      : { contentSecurityPolicy: false }
+  ));
 
   // ─── CORS ────────────────────────────────────────────────────────────────────
   app.use(cors({
@@ -113,11 +114,12 @@ export function createApp() {
   app.use(cookieParser());
 
   // ─── Request Logging ──────────────────────────────────────────────────────────
-  app.use(pinoHttp({
+  const pinoMiddleware = (pinoHttp as any).default || pinoHttp;
+  app.use(pinoMiddleware({
     logger,
     // Don't log health check requests — they're noise
     autoLogging: {
-      ignore: (req) => req.url === '/api/health',
+      ignore: (req: any) => req.url === '/api/health',
     },
     // Redact sensitive headers from logs
     redact: ['req.headers.authorization', 'req.headers.cookie'],
