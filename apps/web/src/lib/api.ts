@@ -24,6 +24,13 @@ export interface ApiError {
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
+export function resolveUrl(endpoint: string): string {
+  if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) return endpoint;
+  return `${API_BASE}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+}
+
 class ApiClient {
   private accessToken: string | null = null;
   private refreshTokenValue: string | null = null;
@@ -90,7 +97,7 @@ class ApiClient {
       headers['Content-Type'] = 'application/json';
     }
 
-    const res = await fetch(endpoint, {
+    const res = await fetch(resolveUrl(endpoint), {
       ...options,
       headers,
       credentials: 'include', // for HttpOnly refresh cookie
@@ -124,7 +131,7 @@ class ApiClient {
     this.refreshPromise = (async () => {
       try {
         const storedRefreshToken = this.getRefreshToken();
-        const res = await fetch('/api/auth/refresh', {
+        const res = await fetch(resolveUrl('/api/auth/refresh'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: storedRefreshToken ? JSON.stringify({ refreshToken: storedRefreshToken }) : undefined,

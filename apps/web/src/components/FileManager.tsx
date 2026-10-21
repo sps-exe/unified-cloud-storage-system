@@ -17,7 +17,7 @@ import {
   Copy,
   Check,
 } from './icons';
-import { api, formatBytes } from '../lib/api';
+import { api, formatBytes, resolveUrl } from '../lib/api';
 import type { FileDto, DriveAccountDto, PaginationMeta } from '@ucss/shared';
 
 interface FileManagerProps {
@@ -83,7 +83,7 @@ export const FileManager: React.FC<FileManagerProps> = ({
   const handleDownload = (fileId: string, filename: string) => {
     // Direct stream download with auth token
     const token = api.getToken();
-    const url = `/api/files/${fileId}/download`;
+    const url = resolveUrl(`/api/files/${fileId}/download`);
     
     // Trigger download via anchor
     fetch(url, {

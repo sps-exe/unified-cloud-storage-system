@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { X, UploadCloud, File, AlertCircle, HardDrive } from './icons';
-import { api, formatBytes } from '../lib/api';
+import { api, formatBytes, resolveUrl } from '../lib/api';
 import type { DriveAccountDto } from '@ucss/shared';
 
 interface UploadModalProps {
@@ -104,7 +104,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       setUploadProgress(70);
 
       const token = api.getToken();
-      const res = await fetch('/api/files/upload', {
+      const res = await fetch(resolveUrl('/api/files/upload'), {
         method: 'POST',
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),

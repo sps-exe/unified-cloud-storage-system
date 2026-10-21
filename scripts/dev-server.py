@@ -40,36 +40,45 @@ def get_pid():
 
     return None
 
-def start():
+def build_bundle():
+    print("Building apps/api bundle...")
+    with open("/tmp/api_build.log", "w") as b_log:
+        build = subprocess.run(
+            [
+                ESBUILD_BIN,
+                "src/server.ts",
+                "--bundle",
+                "--platform=node",
+                "--format=esm",
+                "--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+                "--external:@prisma/client",
+                "--external:@ucss/database",
+                "--external:pg-native",
+                "--outfile=dist/server.js"
+            ],
+            cwd=API_DIR,
+            stdin=subprocess.DEVNULL,
+            stdout=b_log,
+            stderr=b_log,
+            start_new_session=True
+        )
+    if build.returncode != 0:
+        with open("/tmp/api_build.log") as b_log:
+            print("Build failed:", b_log.read())
+        sys.exit(1)
+    print("Build completed.")
+
+def start(force_build=False):
     pid = get_pid()
     if pid:
         print(f"API server already running with PID {pid}")
         return
 
-    print("Building apps/api bundle...")
-    build = subprocess.run(
-        [
-            ESBUILD_BIN,
-            "src/server.ts",
-            "--bundle",
-            "--platform=node",
-            "--format=esm",
-            "--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
-            "--external:@prisma/client",
-            "--external:@ucss/database",
-            "--external:pg-native",
-            "--outfile=dist/server.js"
-        ],
-        cwd=API_DIR,
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        start_new_session=True
-    )
-    if build.returncode != 0:
-        print("Build failed:", build.stderr)
-        sys.exit(1)
-    print("Build completed.")
+    dist_server = os.path.join(API_DIR, "dist/server.js")
+    if force_build or not os.path.exists(dist_server):
+        build_bundle()
+    else:
+        print("Using existing apps/api bundle (dist/server.js).")
 
     with open(LOG_FILE, "a") as log_f:
         proc = subprocess.Popen(

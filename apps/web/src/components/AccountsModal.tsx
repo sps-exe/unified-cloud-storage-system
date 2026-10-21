@@ -25,6 +25,8 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
     setLoading(true);
     try {
       await api.request(`/api/accounts/${accountId}/sync`, { method: 'POST' });
+      setMessage('Storage quota synchronized successfully with Google Drive.');
+      setTimeout(() => setMessage(null), 4000);
       onRefresh();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Sync failed');

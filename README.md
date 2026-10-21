@@ -118,6 +118,39 @@ Client               UCSS API Server             PostgreSQL 16            Target
 
 ---
 
+## 🔄 The Distributed Commit Problem & Reconciliation State Machine
+
+### The Fundamental Challenge
+Google Drive API v3 does **not** participate in distributed two-phase commit (2PC) or XA transactions. If a network partition, client crash, or timeout occurs after bytes are reserved in PostgreSQL but before Google Drive completes the upload:
+- **Naive Implementation Flaw:** Held byte reservations are leaked forever, causing false "Storage Quota Exceeded" errors.
+- **Premature Commit Flaw:** Committing before Google Drive confirmation produces "phantom files" that exist in the database but have zero remote binary chunks.
+
+### The Self-Healing State Machine
+UCSS models upload operations as an explicit, crash-recoverable state machine:
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: 1. /api/files/allocate (advisory lock + byte reservation)
+    PENDING --> UPLOADING: 2. Stream initiated to Google Drive API v3
+    UPLOADING --> ACTIVE: 3. Drive ID received (reserved -> used bytes)
+    UPLOADING --> FAILED: Network error / client disconnect
+    PENDING --> FAILED: Timeout (> 30 min with no stream)
+    ACTIVE --> DELETED: Soft-delete (preserve audit & metadata)
+    FAILED --> [*]: Orphaned reservation released
+    DELETED --> [*]
+```
+
+### Self-Healing Background Reconciler
+The automated background reconciliation worker guarantees eventual consistency without human intervention:
+1. **Contention-Free Queue Claiming:** Queries stuck operations (`upload_status = 'UPLOADING' AND updated_at < NOW() - INTERVAL '30 minutes'`) using `SELECT ... FOR UPDATE OF files SKIP LOCKED`.
+2. **Remote Google Drive Truth Verification:** Queries Google Drive API v3 by file ID or multipart boundary to determine whether the remote file actually completed.
+3. **Deterministic Compensation:**
+   - If Google Drive created the file: Updates database status to `ACTIVE`, links the `google_drive_file_id`, and shifts reserved bytes into used bytes.
+   - If Google Drive never received the file: Rolls back `reserved_bytes`, transitions file status to `FAILED`, and records an immutable audit log entry (`UPLOAD_ABORTED_STUCK`).
+4. **Drift Detection:** Compares the sum of active file sizes with Google's reported `quotaBytesUsed` and recalibrates if external changes occurred.
+
+---
+
 ## 🔬 Database & SQL Engineering Deep Dive
 
 While Prisma is utilized for schema migrations, **all mission-critical operations are written in handcrafted Raw SQL** to unlock PostgreSQL 16 advanced primitives:
@@ -180,6 +213,18 @@ Every query filters on `is_deleted = FALSE`, supported by high-speed partial com
 ```sql
 CREATE INDEX idx_files_user_active ON files (user_id, created_at DESC) WHERE is_deleted = FALSE;
 ```
+
+---
+
+## ⚖️ Technology Stack Justifications & Tradeoffs
+
+| Technology | Selection Rationale | Alternatives Evaluated & Tradeoffs |
+| :--- | :--- | :--- |
+| **Node.js (v20+)** | **Non-blocking asynchronous stream piping.** Node's native stream pipes allow streaming gigabytes of binary data from browser clients directly into Google Drive API v3 without buffering entire files in heap RAM, maintaining a constant sub-100MB server footprint. | *Go / Rust:* Higher raw execution speed, but the official Google Drive API v3 SDK and token lifecycle tooling in TypeScript/Node are exceptionally mature and reliable for OAuth. |
+| **Strict TypeScript 5.7+** | **End-to-End Type Safety.** Monorepo architecture shares strict DTOs, API envelopes, and validation schemas across backend services, raw SQL query results, and the React frontend—eliminating runtime serialization mismatches. | *Pure JavaScript:* Too error-prone when orchestrating complex distributed state machines, quota arithmetic, and cryptographic byte buffers. |
+| **PostgreSQL 16** | **ACID Engine & Concurrency Primitives.** Unlocks sub-millisecond serialization via `pg_advisory_xact_lock`, contention-free background worker claiming via `FOR UPDATE SKIP LOCKED`, single-pass window pagination (`COUNT(*) OVER ()`), and strict physical CHECK constraints. | *MongoDB / DynamoDB:* Lack atomic cross-document isolation without heavy distributed transactions; cannot guarantee deterministic byte quotas under high concurrency. |
+| **Prisma + Hand-Tuned Raw SQL** | **Hybrid Data Layer.** Prisma is utilized exclusively for declarative schema migrations and basic CRUD scaffolding, while all high-concurrency operations (allocations, reservations, reconciliation, pagination) are implemented in handcrafted Raw SQL. | *Pure ORM:* Suboptimal N+1 query patterns, inability to invoke PostgreSQL advisory transaction locks, and inability to execute skip-locked worker queues. |
+| **React 18 + Vite + Tailwind** | **High-Density Data Presentation.** Rapid 60 FPS client rendering with custom multi-color capacity gauges, real-time debounced search, and zero bloat. | *Next.js SSR:* Unnecessary server-rendering overhead for a desktop-class authenticated file manager; Vite delivers instant client HMR and static CDN asset caching. |
 
 ---
 
@@ -281,6 +326,73 @@ python3 scripts/dev-server.py start
 ```
 
 Open [http://localhost:4000](http://localhost:4000) in your browser. Register your account and link your Google accounts into the pool!
+
+---
+
+## 🚢 Production Deployment Architecture
+
+UCSS supports two production deployment architectures:
+1. **Decoupled Architecture (Recommended):** Frontend on **Vercel** edge CDN, with the Node.js streaming backend on **Render**, **Railway**, or **AWS ECS/Fly.io**.
+2. **Unified Monolith Architecture:** Backend and frontend bundled together into a single multi-stage Docker container (`Dockerfile`) serving static assets from `/public`.
+
+### 1. Frontend Deployment on Vercel
+The frontend is pre-configured with [`apps/web/vercel.json`](apps/web/vercel.json) and root [`vercel.json`](vercel.json), providing automated single-page application fallback routing, immutability caching for hashed static assets (`max-age=31536000`), and security headers.
+
+Deploy via the Vercel CLI:
+```bash
+# From workspace root
+vercel --prod
+```
+Or import your GitHub repository into the Vercel dashboard:
+- **Framework Preset:** Vite
+- **Root Directory:** `apps/web` (or root with monorepo build)
+- **Build Command:** `pnpm build`
+- **Output Directory:** `dist`
+
+### 2. Backend Deployment (Render / Railway / Docker)
+Because the Express backend manages long-lived database connections, AES-256-GCM encryption streams, and periodic reconciliation workers, it runs as a persistent containerized service.
+
+#### Option A: Render Blueprint (`render.yaml`)
+A turnkey [`render.yaml`](render.yaml) is included. Simply link your GitHub repository to Render:
+- Provisions a managed **PostgreSQL 16** database with automatic connection string injection.
+- Provisions a Docker web service with automatic health checks against `/api/health`.
+
+#### Option B: Railway (`railway.json`)
+Deploy with the included [`railway.json`](railway.json) and root [`Dockerfile`](Dockerfile).
+
+#### Option C: Production Docker Build
+```bash
+docker build -t ucss-monolith:latest -f Dockerfile .
+docker run -p 4000:4000 --env-file .env ucss-monolith:latest
+```
+
+### 3. Production Environment Variable Matrix
+
+| Variable | Frontend (Vercel) | Backend (Render / Railway / Docker) | Description |
+| :--- | :---: | :---: | :--- |
+| `NODE_ENV` | — | `production` | Enables production optimizations & Helmet security |
+| `PORT` | — | `4000` | Server listening port |
+| `DATABASE_URL` | — | `postgresql://user:pass@host:5432/db?sslmode=require` | PostgreSQL 16 pooled connection string |
+| `VITE_API_URL` | `https://your-api.onrender.com` | — | Target API origin (omit if reverse-proxied) |
+| `CORS_ORIGIN` | — | `https://your-app.vercel.app` | Allowed CORS origin for credentials |
+| `JWT_ACCESS_SECRET` | — | `64-byte hex string` | Signs 15-minute access JWTs |
+| `JWT_REFRESH_SECRET` | — | `64-byte hex string` | Signs 7-day refresh JWTs |
+| `TOKEN_ENCRYPTION_KEY` | — | `32-byte (64 hex char) string` | Authenticated AES-256-GCM master key |
+| `GOOGLE_CLIENT_ID` | — | `*.apps.googleusercontent.com` | Google Cloud OAuth 2.0 Web Client ID |
+| `GOOGLE_CLIENT_SECRET` | — | `GOCSPX-*` | Google Cloud OAuth 2.0 Client Secret |
+| `GOOGLE_REDIRECT_URI` | — | `https://your-api.onrender.com/api/oauth/google/callback` | Authorized Google OAuth callback URL |
+
+---
+
+## 🎙️ Mentor Showcase & Technical Interview Guide
+
+Looking for a concise script to demonstrate UCSS to a technical lead, mentor, or hiring manager?  
+👉 Read the step-by-step [**3-Minute Technical Mentor Demonstration Script**](docs/mentor-showcase-script.md), covering:
+- The Elevator Pitch & Distributed Commit problem formulation (0:00 - 0:30)
+- Live UI Walkthrough with 9 connected accounts and multi-color storage meter (0:30 - 1:15)
+- Under the hood of the Two-Phase Byte Reservation Protocol with row locks (1:15 - 2:00)
+- Fault tolerance, soft deletes, and self-healing reconciliation with `SKIP LOCKED` (2:00 - 2:40)
+- Architectural tradeoff justifications and anticipated Q&A (2:40 - 3:00)
 
 ---
 

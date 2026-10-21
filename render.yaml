@@ -1,0 +1,46 @@
+# =============================================================================
+# Render Blueprint Specification for Unified Cloud Storage System (UCSS)
+# =============================================================================
+services:
+  # ─── API & Streaming Monolith ───────────────────────────────────────────────
+  - type: web
+    name: ucss-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: oregon
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ucss-postgres
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: TOKEN_ENCRYPTION_KEY
+        generateValue: true
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+
+databases:
+  # ─── Managed PostgreSQL 16 Database ────────────────────────────────────────
+  - name: ucss-postgres
+    databaseName: ucss_db
+    user: ucss_user
+    plan: starter
+    region: oregon
+    postgresMajorVersion: 16
