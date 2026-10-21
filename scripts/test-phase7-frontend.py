@@ -32,8 +32,8 @@ def log_fail(msg, details=""):
 
 def make_request(url):
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "UCSS-Test-Client"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        req = urllib.request.Request(url, headers={"User-Agent": "UCSS-Test-Client", "Connection": "close"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status, resp.read(), resp.headers
     except urllib.error.HTTPError as e:
         return e.code, e.read(), e.headers

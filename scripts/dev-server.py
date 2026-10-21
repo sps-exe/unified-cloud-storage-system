@@ -44,7 +44,18 @@ def start():
 
     print("Building apps/api bundle...")
     build = subprocess.run(
-        ["../../node_modules/.bin/esbuild", "src/server.ts", "--bundle", "--platform=node", "--format=esm", "--packages=external", "--outfile=dist/server.js"],
+        [
+            "../../node_modules/.bin/esbuild",
+            "src/server.ts",
+            "--bundle",
+            "--platform=node",
+            "--format=esm",
+            "--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+            "--external:@prisma/client",
+            "--external:@ucss/database",
+            "--external:pg-native",
+            "--outfile=dist/server.js"
+        ],
         cwd=API_DIR,
         stdin=subprocess.DEVNULL,
         capture_output=True,

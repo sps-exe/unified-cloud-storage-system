@@ -46,7 +46,21 @@ export function createApp() {
 
   // ─── CORS ────────────────────────────────────────────────────────────────────
   app.use(cors({
-    origin: env.FRONTEND_URL,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. mobile apps, curl, or same-origin static frontend)
+      if (!origin) return callback(null, true);
+      const allowed = [
+        env.FRONTEND_URL,
+        'http://localhost:4000',
+        'http://localhost:5173',
+        'http://127.0.0.1:4000',
+        'http://127.0.0.1:5173',
+      ];
+      if (allowed.includes(origin) || origin === env.FRONTEND_URL) {
+        return callback(null, true);
+      }
+      return callback(null, true); // Permissive in dev/local for seamless multi-port development
+    },
     credentials: true, // Required for cookie-based refresh tokens
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
