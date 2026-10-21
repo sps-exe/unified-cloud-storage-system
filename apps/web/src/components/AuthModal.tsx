@@ -38,13 +38,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
       : { email: email.trim(), password };
 
     try {
-      const res = await api.request<{ accessToken: string }>(endpoint, {
+      const res = await api.request<{ accessToken: string; refreshToken?: string }>(endpoint, {
         method: 'POST',
         body: JSON.stringify(payload),
       });
 
       if (res.ok && res.data.accessToken) {
         api.setToken(res.data.accessToken);
+        if (res.data.refreshToken) {
+          api.setRefreshToken(res.data.refreshToken);
+        }
         onSuccess();
       }
     } catch (err) {

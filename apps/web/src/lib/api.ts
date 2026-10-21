@@ -26,22 +26,50 @@ export type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
 class ApiClient {
   private accessToken: string | null = null;
+  private refreshTokenValue: string | null = null;
+  private refreshPromise: Promise<boolean> | null = null;
 
   constructor() {
-    this.accessToken = localStorage.getItem('ucss_access_token');
+    if (typeof window !== 'undefined') {
+      this.accessToken = localStorage.getItem('ucss_access_token');
+      this.refreshTokenValue = localStorage.getItem('ucss_refresh_token');
+    }
   }
 
   setToken(token: string | null) {
     this.accessToken = token;
-    if (token) {
-      localStorage.setItem('ucss_access_token', token);
-    } else {
-      localStorage.removeItem('ucss_access_token');
+    if (typeof window !== 'undefined') {
+      if (token) {
+        localStorage.setItem('ucss_access_token', token);
+      } else {
+        localStorage.removeItem('ucss_access_token');
+      }
+    }
+  }
+
+  setRefreshToken(token: string | null) {
+    this.refreshTokenValue = token;
+    if (typeof window !== 'undefined') {
+      if (token) {
+        localStorage.setItem('ucss_refresh_token', token);
+      } else {
+        localStorage.removeItem('ucss_refresh_token');
+      }
     }
   }
 
   getToken(): string | null {
+    if (!this.accessToken && typeof window !== 'undefined') {
+      this.accessToken = localStorage.getItem('ucss_access_token');
+    }
     return this.accessToken;
+  }
+
+  getRefreshToken(): string | null {
+    if (!this.refreshTokenValue && typeof window !== 'undefined') {
+      this.refreshTokenValue = localStorage.getItem('ucss_refresh_token');
+    }
+    return this.refreshTokenValue;
   }
 
   async request<T>(
@@ -53,8 +81,9 @@ class ApiClient {
       ...(options.headers as Record<string, string>),
     };
 
-    if (this.accessToken && !headers['Authorization']) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    const token = this.getToken();
+    if (token && !headers['Authorization']) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
 
     if (!(options.body instanceof FormData) && !headers['Content-Type']) {
@@ -67,7 +96,7 @@ class ApiClient {
       credentials: 'include', // for HttpOnly refresh cookie
     });
 
-    if (res.status === 401 && retryOnAuth && !endpoint.includes('/auth/refresh') && !endpoint.includes('/auth/login')) {
+    if (res.status === 401 && retryOnAuth && !endpoint.includes('/auth/refresh') && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/register')) {
       // Attempt token refresh
       const refreshed = await this.refreshToken();
       if (refreshed) {
@@ -88,24 +117,45 @@ class ApiClient {
   }
 
   async refreshToken(): Promise<boolean> {
-    try {
-      const res = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (res.ok) {
-        const body: ApiSuccess<{ accessToken: string }> = await res.json();
-        if (body.ok && body.data.accessToken) {
-          this.setToken(body.data.accessToken);
-          return true;
-        }
-      }
-      this.setToken(null);
-      return false;
-    } catch {
-      this.setToken(null);
-      return false;
+    if (this.refreshPromise) {
+      return this.refreshPromise;
     }
+
+    this.refreshPromise = (async () => {
+      try {
+        const storedRefreshToken = this.getRefreshToken();
+        const res = await fetch('/api/auth/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: storedRefreshToken ? JSON.stringify({ refreshToken: storedRefreshToken }) : undefined,
+          credentials: 'include',
+        });
+
+        if (res.ok) {
+          const body: ApiSuccess<{ accessToken: string; refreshToken?: string }> = await res.json();
+          if (body.ok && body.data.accessToken) {
+            this.setToken(body.data.accessToken);
+            if (body.data.refreshToken) {
+              this.setRefreshToken(body.data.refreshToken);
+            }
+            return true;
+          }
+        }
+
+        // Only clear tokens if the refresh endpoint explicitly rejected them (401/403)
+        if (res.status === 401 || res.status === 403) {
+          this.setToken(null);
+          this.setRefreshToken(null);
+        }
+        return false;
+      } catch {
+        return false;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
   }
 }
 

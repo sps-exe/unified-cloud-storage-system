@@ -49,8 +49,8 @@ function setRefreshCookie(res: Response, token: string): void {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
-    path: '/api/auth',
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in ms
+    path: '/',
   });
 }
 
@@ -59,7 +59,7 @@ function clearRefreshCookie(res: Response): void {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
     sameSite: 'lax',
-    path: '/api/auth',
+    path: '/',
   });
 }
 
@@ -75,11 +75,13 @@ authRouter.post(
       const response: ApiResponse<{
         user: typeof user;
         accessToken: string;
+        refreshToken: string;
       }> = {
         ok: true,
         data: {
           user,
           accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
         },
       };
 
@@ -105,11 +107,13 @@ authRouter.post(
       const response: ApiResponse<{
         user: typeof user;
         accessToken: string;
+        refreshToken: string;
       }> = {
         ok: true,
         data: {
           user,
           accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
         },
       };
 
@@ -133,10 +137,11 @@ authRouter.post('/refresh', async (req: Request, res: Response, next: NextFuncti
 
     const newAccessToken = await AuthService.refreshAccessToken(rawToken);
 
-    const response: ApiResponse<{ accessToken: string }> = {
+    const response: ApiResponse<{ accessToken: string; refreshToken?: string }> = {
       ok: true,
       data: {
         accessToken: newAccessToken,
+        refreshToken: rawToken,
       },
     };
 
@@ -165,9 +170,16 @@ authRouter.get(
       const userId = req.user!.id;
       const profileWithStats = await AuthService.getUserWithStats(userId);
 
-      const response: ApiResponse<typeof profileWithStats> = {
+      const response: ApiResponse<typeof profileWithStats & { user: { id: string; email: string; displayName: string | null } }> = {
         ok: true,
-        data: profileWithStats,
+        data: {
+          ...profileWithStats,
+          user: {
+            id: profileWithStats.id,
+            email: profileWithStats.email,
+            displayName: profileWithStats.displayName,
+          },
+        },
       };
 
       res.status(200).json(response);

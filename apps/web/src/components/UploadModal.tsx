@@ -19,6 +19,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [dragOver, setDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [displayName, setDisplayName] = useState('');
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('auto');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +34,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     const availB = Number(b.quotaAvailableBytes) || 0;
     return availB - availA;
   })[0];
+
+  const targetAccount = selectedAccountId === 'auto'
+    ? bestAccount
+    : (activeAccounts.find((a) => a.id === selectedAccountId) || bestAccount);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -64,6 +69,16 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     try {
       // 1. Pre-flight allocation
       setUploadProgress(30);
+      const allocPayload: Record<string, unknown> = {
+        originalFilename: selectedFile.name,
+        displayFilename: displayName || selectedFile.name,
+        fileSizeBytes: selectedFile.size,
+        mimeType: selectedFile.type || 'application/octet-stream',
+      };
+      if (selectedAccountId && selectedAccountId !== 'auto') {
+        allocPayload.driveAccountId = selectedAccountId;
+      }
+
       const allocRes = await api.request<{
         fileId: string;
         uploadOperationId: string;
@@ -71,12 +86,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         googleEmail: string;
       }>('/api/files/allocate', {
         method: 'POST',
-        body: JSON.stringify({
-          originalFilename: selectedFile.name,
-          displayFilename: displayName || selectedFile.name,
-          fileSizeBytes: selectedFile.size,
-          mimeType: selectedFile.type || 'application/octet-stream',
-        }),
+        body: JSON.stringify(allocPayload),
       });
 
       setUploadProgress(50);
@@ -87,6 +97,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       formData.append('fileId', allocRes.data.fileId);
       formData.append('uploadOperationId', allocRes.data.uploadOperationId);
       formData.append('displayFilename', displayName || selectedFile.name);
+      if (selectedAccountId && selectedAccountId !== 'auto') {
+        formData.append('driveAccountId', selectedAccountId);
+      }
 
       setUploadProgress(70);
 
@@ -203,30 +216,55 @@ export const UploadModal: React.FC<UploadModalProps> = ({
             </div>
           )}
 
-          {/* Headroom / Account Allocation Preview */}
-          {bestAccount ? (
-            <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-3 flex items-center gap-3 text-xs">
-              <HardDrive className="h-4 w-4 text-emerald-400 shrink-0" />
-              <div>
-                <span className="text-slate-400">Target Google Account: </span>
-                <span className="font-semibold text-slate-200 font-mono">{bestAccount.googleEmail}</span>
-                <span className="text-slate-500 ml-1">
-                  ({formatBytes(bestAccount.quotaAvailableBytes)} free headroom)
+          {/* Destination Google Drive Account Selection */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <label className="font-medium text-slate-300 flex items-center gap-1.5">
+                <HardDrive className="h-3.5 w-3.5 text-indigo-400" />
+                <span>Target Google Account</span>
+              </label>
+              <span className="text-[11px] text-slate-500">
+                {selectedAccountId === 'auto' ? '⚡ Auto-Load Balanced' : 'Direct Selection'}
+              </span>
+            </div>
+
+            <select
+              value={selectedAccountId}
+              onChange={(e) => setSelectedAccountId(e.target.value)}
+              disabled={isUploading || activeAccounts.length === 0}
+              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+            >
+              <option value="auto">
+                ⚡ Auto-Select (Highest Headroom: {bestAccount ? bestAccount.googleEmail : 'None'})
+              </option>
+              {activeAccounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.googleEmail} ({formatBytes(acc.quotaAvailableBytes)} free)
+                </option>
+              ))}
+            </select>
+
+            {targetAccount ? (
+              <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg p-2.5 flex items-center justify-between text-xs">
+                <span className="text-slate-400 truncate max-w-[240px]">
+                  Routing to: <strong className="text-slate-200 font-mono">{targetAccount.googleEmail}</strong>
+                </span>
+                <span className="text-emerald-400 font-mono text-[11px] shrink-0">
+                  {formatBytes(targetAccount.quotaAvailableBytes)} headroom
                 </span>
               </div>
-            </div>
-          ) : (
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-center gap-2 text-xs text-amber-400">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>No active Google Drive accounts connected. Connect an account first.</span>
-            </div>
-          )}
+            ) : (
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-center gap-2 text-xs text-amber-400">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>No active Google Drive accounts connected. Connect an account first.</span>
+              </div>
+            )}
 
-          {/* Safety margin indicator */}
-          <p className="text-[11px] text-slate-500 flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block" />
-            <span>500 MB safety margin enforced per account to prevent hard quota boundary errors.</span>
-          </p>
+            <p className="text-[11px] text-slate-500 flex items-center gap-1 pt-0.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block shrink-0" />
+              <span>500 MB safety margin enforced per account to prevent hard quota boundary errors.</span>
+            </p>
+          </div>
 
           {/* Progress bar */}
           {isUploading && (

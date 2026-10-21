@@ -1,0 +1,60 @@
+name: 🐛 Bug Report
+description: File a bug report to help us improve UCSS
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue! Please verify the bug does not contain private OAuth credentials or tokens.
+  - type: input
+    id: version
+    attributes:
+      label: UCSS Version / Commit Hash
+      description: What version or git commit are you running?
+      placeholder: e.g. v1.0.0 or 4ebc4ce
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      options:
+        - Allocation Engine (AllocationService)
+        - Google OAuth & Account Manager
+        - PostgreSQL & Database Migrations
+        - Background Reconciler / Cron
+        - Web UI (React File Manager)
+        - API Endpoints
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Step-by-step instructions to reproduce the issue.
+      placeholder: |
+        1. Connect 2 Google accounts
+        2. Attempt file upload of size X
+        3. Observe error Y
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Paste relevant logs from `python3 scripts/dev-server.py logs 50` (Redact tokens!).
+      render: shell

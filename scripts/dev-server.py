@@ -12,6 +12,10 @@ LOG_FILE = "/tmp/ucss_api.log"
 API_DIR = "/Users/sps/Desktop/DATABASE UNLIMITED/ucss/apps/api"
 PORT = 4000
 
+NODE_BIN = "/usr/local/bin/node" if os.path.exists("/usr/local/bin/node") else "node"
+NATIVE_ESBUILD = "/Users/sps/Desktop/DATABASE UNLIMITED/ucss/node_modules/.pnpm/@esbuild+darwin-arm64@0.25.12/node_modules/@esbuild/darwin-arm64/bin/esbuild"
+ESBUILD_BIN = NATIVE_ESBUILD if os.path.exists(NATIVE_ESBUILD) else "../../node_modules/.bin/esbuild"
+
 def get_pid():
     if os.path.exists(PID_FILE):
         try:
@@ -45,7 +49,7 @@ def start():
     print("Building apps/api bundle...")
     build = subprocess.run(
         [
-            "../../node_modules/.bin/esbuild",
+            ESBUILD_BIN,
             "src/server.ts",
             "--bundle",
             "--platform=node",
@@ -59,7 +63,8 @@ def start():
         cwd=API_DIR,
         stdin=subprocess.DEVNULL,
         capture_output=True,
-        text=True
+        text=True,
+        start_new_session=True
     )
     if build.returncode != 0:
         print("Build failed:", build.stderr)
@@ -68,7 +73,7 @@ def start():
 
     with open(LOG_FILE, "a") as log_f:
         proc = subprocess.Popen(
-            ["node", "dist/server.js"],
+            [NODE_BIN, "dist/server.js"],
             cwd=API_DIR,
             stdout=log_f,
             stderr=subprocess.STDOUT,

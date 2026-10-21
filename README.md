@@ -1,85 +1,201 @@
 # Unified Cloud Storage System (UCSS)
-> **Portfolio-Grade Distributed Cloud Storage Aggregator Built with Node.js, Express, PostgreSQL 16 & React**
 
-[![Tests](https://img.shields.io/badge/tests-117%20passing%20%7C%20100%25-emerald)](file:///scripts/run-all-tests.py)
-[![Database](https://img.shields.io/badge/database-PostgreSQL%2016%20Raw%20SQL-blue)](file:///packages/database/src/queries)
-[![Security](https://img.shields.io/badge/security-AES--256--GCM%20Encrypted%20Tokens-purple)](file:///apps/api/src/lib/crypto.ts)
-[![Architecture](https://img.shields.io/badge/architecture-Modular%20Monolith-orange)](file:///docs)
+> **Enterprise-grade distributed cloud storage aggregator that pools ~10 Google Drive accounts into a unified, high-performance virtual filesystem using Node.js, Express, PostgreSQL 16, and React.**
+
+[![CI/CD Pipeline](https://github.com/shaurya-sps/unified-cloud-storage-system/actions/workflows/ci.yml/badge.svg)](https://github.com/shaurya-sps/unified-cloud-storage-system/actions)
+[![Tests Passing](https://img.shields.io/badge/tests-117%20passing%20%7C%20100%25-10b981?style=flat-square&logo=checkmarx)](scripts/run-all-tests.py)
+[![Database](https://img.shields.io/badge/database-PostgreSQL%2016%20Raw%20SQL-336791?style=flat-square&logo=postgresql)](packages/database/src/queries)
+[![Security](https://img.shields.io/badge/security-AES--256--GCM%20Encrypted%20Tokens-8b5cf6?style=flat-square&logo=openaccess)](apps/api/src/lib/crypto.ts)
+[![TypeScript](https://img.shields.io/badge/typescript-strict%20v5.7-3178c6?style=flat-square&logo=typescript)](tsconfig.json)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 ---
 
-## 💡 Overview & Problem Solved
+## 💡 Executive Summary & The Problem Solved
 
-Free cloud storage accounts (such as personal Google Drive accounts) provide 15 GB of quota each, but managing multiple accounts creates fragmented silos: users cannot search across accounts, must remember where files are located, and cannot utilize combined capacity for large workloads.
+Every personal Google account receives 15 GB of free cloud storage. Users commonly maintain multiple accounts across personal, freelance, academic, and side projects. However, these accounts become **fragmented data silos**:
+* **Zero Cross-Account Search:** You must remember which account holds which file.
+* **Artificial Capacity Walls:** A 4 GB video cannot utilize the 2 GB remaining on Account A and 3 GB on Account B.
+* **Management Overhead:** Constantly switching browser profiles and authentications.
 
-The **Unified Cloud Storage System (UCSS)** aggregates approximately **10 personal Google Drive accounts** into a single virtual filesystem with **~150 GB of theoretical storage capacity**. 
+**UCSS transforms these fragmented accounts into a singular, high-capacity virtual filesystem.** 
 
-Google Drive stores the actual binary payloads inside an isolated application root folder (`_UCSS_ROOT_`), while a central **PostgreSQL database** acts as the single source of truth for metadata, atomic byte reservation, multi-account routing, and consistency auditing.
+Google Drive serves strictly as the underlying distributed binary storage fabric (isolated to a dedicated `_UCSS_ROOT_` directory), while a centralized **PostgreSQL 16 database** serves as the transactional brain—orchestrating atomic byte reservations, row-level concurrency locks, high-speed cached directory browsing, and self-healing reconciliation.
+
+```
+       ┌─────────────────────────────────────────────────────────────┐
+       │                Unified Cloud Storage System                 │
+       │           Single Dashboard • Unified Quota Meter            │
+       └──────────────┬───────────────────────────────┬──────────────┘
+                      │                               │
+         Metadata & Atomic Locks             Binary Streaming & Storage
+                      ▼                               ▼
+       ┌─────────────────────────────┐  ┌─────────────────────────────┐
+       │     PostgreSQL 16 Engine    │  │   Google Drive Cloud Fabric │
+       │  • Raw SQL byte reservation │  │  • Account #1 (15 GB)       │
+       │  • Advisory transaction locks│ │  • Account #2 (15 GB)       │
+       │  • AES-256-GCM token vault  │  │  • Account #3 (15 GB)       │
+       │  • Single-pass window query │  │  • Account #N (~150 GB+)    │
+       └─────────────────────────────┘  └─────────────────────────────┘
+```
 
 ---
 
 ## 🏛️ System Architecture
 
+### Modular Monolith Architecture
 ```mermaid
-graph TD
-    User([Web Client / React 18 SPA]) -->|REST API + HttpOnly JWT| Express[Node.js Express Modular Monolith]
-    Express -->|Prisma + Raw SQL Queries| PG[(PostgreSQL 16 Database)]
-    Express -->|@googleapis/drive v3| GoogleDrive[Google Drive Cloud API]
-
-    subgraph Database Architecture (Raw SQL)
-        PG --> AllocLock[pg_advisory_xact_lock]
-        PG --> AccountsTable[drive_accounts (~10 Accounts)]
-        PG --> FilesTable[files (Soft Delete Only)]
-        PG --> UploadOpsTable[upload_operations]
-        PG --> SnapshotsTable[storage_snapshots (Time-Series)]
-        PG --> AuditLogsTable[audit_logs (Immutable)]
+flowchart TD
+    subgraph Client["Presentation Layer (React 18 SPA)"]
+        UI["Web Dashboard & File Explorer"]
+        Meter["Unified Storage Meter & Analytics"]
+        UploadModal["Upload Modal (Target Account Selector)"]
     end
 
-    subgraph Distributed Reliability Engine
-        Express --> ReconWorker[Reconciliation Worker]
-        ReconWorker -->|FOR UPDATE SKIP LOCKED| FilesTable
-        ReconWorker -->|Quota Drift Detection| AccountsTable
+    subgraph API["Application Services (Node.js Express Modular Monolith)"]
+        AuthMw["Authentication & Session Middleware"]
+        AllocSvc["Allocation Engine (Water-Level Balancing)"]
+        FileSvc["Streaming Files & Proxy Service"]
+        OAuthSvc["Google OAuth 2.0 Engine"]
+        ReconCron["Background Reconciler Worker"]
     end
 
-    subgraph Google Accounts Fabric (~150 GB)
-        GoogleDrive --> Acc1[Drive Account #1 (15 GB)]
-        GoogleDrive --> Acc2[Drive Account #2 (15 GB)]
-        GoogleDrive --> Acc10[Drive Account #10 (15 GB)]
+    subgraph Data["Persistence Layer (PostgreSQL 16 Engine)"]
+        Advisory["pg_advisory_xact_lock (Account Serialization)"]
+        DriveAcc["drive_accounts (Encrypted Tokens & Quota)"]
+        FilesTab["files (Soft-Delete Metadata Index)"]
+        UploadOps["upload_operations (State Machine Auditing)"]
     end
+
+    subgraph Cloud["Storage Fabric (Google Drive API v3)"]
+        GD1["Google Account #1 (_UCSS_ROOT_)"]
+        GD2["Google Account #2 (_UCSS_ROOT_)"]
+        GD3["Google Account #N (Institutional / Personal)"]
+    end
+
+    UI -->|REST + HttpOnly JWT| AuthMw
+    AuthMw --> AllocSvc
+    AuthMw --> FileSvc
+    AuthMw --> OAuthSvc
+    
+    AllocSvc -->|SELECT ... FOR UPDATE| Advisory
+    AllocSvc -->|Atomic Byte Increment| DriveAcc
+    FileSvc -->|Streaming Multipart Pipe| Cloud
+    ReconCron -->|FOR UPDATE SKIP LOCKED| FilesTab
+    OAuthSvc -->|AES-256-GCM Encrypted Token| DriveAcc
 ```
 
 ---
 
-## 🔑 Core Technical Highlights & Engineering Decisions
+## ⚡ Concurrency & Two-Phase Reservation Protocol
 
-### 1. PostgreSQL-First Architecture & Raw SQL Mastery
-While Prisma is utilized for schema migrations and type safety, all critical allocation, browsing, and reconciliation operations are executed directly via raw SQL (`prisma.$queryRaw` / `prisma.$executeRaw`):
-- **Transaction-Level Advisory Locks:** `pg_advisory_xact_lock(hashtext('alloc_' || account_id))` serializes byte allocations per account and eliminates race conditions.
-- **Single-Pass Window Functions:** Browsing queries use `COUNT(*) OVER () AS total_count` with dynamic SQL `CASE` sorting to fetch filtered results and total counts in a single round-trip.
-- **Concurrent Worker Queue:** Stuck upload cleanup runs with `FOR UPDATE OF f SKIP LOCKED`, allowing multiple background worker pods to process distinct stuck records without lock contention.
-- **Atomic Byte Shifting:** Reconciles differences between pre-flight estimated bytes and final verified stream sizes atomically in SQL.
+To guarantee that parallel uploads never cause quota overflows or database inconsistencies, UCSS implements a deterministic **Two-Phase Distributed Reservation Protocol**:
 
-### 2. Intelligent Storage Allocation Engine
-- **Headroom Calculation:** Ranks accounts dynamically by available headroom (`quota_limit - quota_used - reserved - safety_margin`).
-- **500 MB Safety Margin:** Rejects allocations that would push Drive accounts too close to Google's hard quota boundaries with `HTTP 507 Insufficient Storage`.
-- **Two-Phase Reservation:** Holds byte reservations in `reserved_bytes` during in-flight uploads and atomically transfers them to `quota_used_bytes` upon SHA-256 verification.
-
-### 3. Security Hardening & Zero-Knowledge Tokens
-- **Least Privilege OAuth Scope:** Restricted strictly to `https://www.googleapis.com/auth/drive.file`. UCSS cannot access any existing user files or folders outside `_UCSS_ROOT_`.
-- **AES-256-GCM Encryption at Rest:** Every OAuth refresh token is encrypted with random 12-byte initialization vectors and 16-byte authentication tags. Plaintext tokens never enter database logs or API responses.
-- **Anti-CSRF State Parameter:** Signed and encrypted OAuth state envelope protects against authorization code injection attacks.
-- **Architectural Soft-Deletion:** Non-negotiable rule enforced throughout: `is_deleted = TRUE`, `deleted_at = NOW()`. Zero physical `DELETE FROM files` queries.
-
-### 4. Background Reliability & Quota Reconciliation
-- **Stuck Upload Recovery:** Automatically detects and aborts uploads stalled beyond timeout thresholds, releasing held reservations.
-- **Orphaned Reservation Reset:** Self-heals quota drift by comparing `reserved_bytes` against active in-flight file sums using SQL `HAVING`.
-- **Time-Series Snapshots:** Captures periodic quota snapshots for audit trails and storage trend analytics.
+```
+Client               UCSS API Server             PostgreSQL 16            Target Google Drive
+  │                        │                            │                          │
+  │─── 1. POST /allocate ─>│                            │                          │
+  │                        │─── 2. Begin Transaction ──>│                          │
+  │                        │    • Advisory Lock (Hash)  │                          │
+  │                        │    • Verify Headroom >= S  │                          │
+  │                        │    • reserved_bytes += S   │                          │
+  │                        │    • Insert File (PENDING) │                          │
+  │                        │<── 3. Commit Reservation ──│                          │
+  │<── 4. File ID & Ack ───│                            │                          │
+  │                        │                            │                          │
+  │─── 5. POST /upload ───>│                            │                          │
+  │    (Binary Stream)     │─── 6. Pipe Stream ───────────────────────────────────>│
+  │                        │                                                       │
+  │                        │<── 7. Upload Complete (Drive File ID) ────────────────│
+  │                        │                            │                          │
+  │                        │─── 8. Atomic Finalize ────>│                          │
+  │                        │    • quota_used_bytes += S │                          │
+  │                        │    • reserved_bytes -= S   │                          │
+  │                        │    • File status = ACTIVE  │                          │
+  │                        │<── 9. Finalized ───────────│                          │
+  │<── 10. Success (200) ──│                            │                          │
+```
 
 ---
 
-## 🧪 Automated Verification & Test Coverage
+## 🔬 Database & SQL Engineering Deep Dive
 
-The system includes **117 automated integration test assertions across 5 dedicated test suites**, all passing at **100%**:
+While Prisma is utilized for schema migrations, **all mission-critical operations are written in handcrafted Raw SQL** to unlock PostgreSQL 16 advanced primitives:
+
+### 1. Row-Level Locks & Advisory Locks (`pg_advisory_xact_lock`)
+```sql
+-- Serializes allocations on a specific account without locking unrelated accounts
+SELECT pg_advisory_xact_lock(hashtext('alloc_' || da.id::text))
+FROM drive_accounts da
+WHERE da.id = $1::uuid;
+```
+Advisory locks are automatically released when the database transaction commits or rolls back, providing sub-millisecond serialization without table-level locking bottlenecks.
+
+### 2. High-Throughput Worker Queuing (`FOR UPDATE SKIP LOCKED`)
+```sql
+-- Reconciliation workers claim stuck uploads without lock contention
+SELECT f.id, f.drive_account_id, f.size_bytes
+FROM files f
+WHERE f.upload_status = 'UPLOADING'
+  AND f.updated_at < NOW() - INTERVAL '30 minutes'
+FOR UPDATE OF f SKIP LOCKED
+LIMIT 50;
+```
+Multiple background worker instances can run in parallel; each automatically claims distinct records without blocking each other or encountering deadlocks.
+
+### 3. Single-Pass Window Function Pagination
+```sql
+-- Retrieves metadata, total matching count, and dynamic sorting in a single round-trip
+SELECT 
+  f.id, f.display_filename, f.size_bytes, f.mime_type, f.created_at,
+  da.google_email AS "driveAccountEmail",
+  COUNT(*) OVER () AS total_count
+FROM files f
+JOIN drive_accounts da ON da.id = f.drive_account_id
+WHERE f.user_id = $1::uuid AND f.is_deleted = FALSE
+ORDER BY 
+  CASE WHEN $2 = 'name' AND $3 = 'asc' THEN f.display_filename END ASC,
+  CASE WHEN $2 = 'name' AND $3 = 'desc' THEN f.display_filename END DESC,
+  f.created_at DESC
+LIMIT $4 OFFSET $5;
+```
+
+### 4. Integrity Constraints Enforcing Physical Laws
+```sql
+-- Prevents negative quota or inverted reservations at the database kernel level
+ALTER TABLE drive_accounts 
+  ADD CONSTRAINT chk_quota_non_negative CHECK (quota_limit_bytes >= 0),
+  ADD CONSTRAINT chk_quota_used_valid CHECK (quota_used_bytes >= 0),
+  ADD CONSTRAINT chk_reserved_valid CHECK (reserved_bytes >= 0);
+```
+
+### 5. Non-Destructive Soft Deletes
+```sql
+-- Deletes preserve audit trails and integrity forever:
+UPDATE files 
+SET is_deleted = TRUE, deleted_at = NOW(), upload_status = 'DELETED'
+WHERE id = $1::uuid AND user_id = $2::uuid;
+```
+Every query filters on `is_deleted = FALSE`, supported by high-speed partial composite indexing:
+```sql
+CREATE INDEX idx_files_user_active ON files (user_id, created_at DESC) WHERE is_deleted = FALSE;
+```
+
+---
+
+## 🔒 Security & Token Hygiene
+
+* **AES-256-GCM Token Encryption:** Refresh tokens are never stored in plaintext. Every token is encrypted with an authenticated 12-byte initialization vector and 16-byte authentication tag:
+  $$\text{Payload} = \text{IV (12B)} \,\|\, \text{AuthTag (16B)} \,\|\, \text{Ciphertext}$$
+* **Least-Privilege Scope:** Restricted strictly to `https://www.googleapis.com/auth/drive.file`. The app can only see files it created; it cannot inspect user emails, contacts, or preexisting Drive documents.
+* **Cryptographic Anti-CSRF:** The OAuth flow encrypts a signed payload (userId + timestamp + HMAC) inside the Google `state` parameter to defeat authorization code interception.
+* **Strict Session Isolation:** Refresh cookies use `HttpOnly; SameSite=Lax; Path=/` with dual localStorage fallback for privacy browsers (Brave Shields).
+
+---
+
+## 🧪 Verification & Test Suite
+
+The repository includes a comprehensive automated test runner with **117 integration test assertions** across 5 suites:
 
 ```
 ================================================================================
@@ -91,13 +207,12 @@ The system includes **117 automated integration test assertions across 5 dedicat
 [4/5] Phase 6: Reliability & Background Reconciliation ...... ✅ 20/20 PASSED (100%)
 [5/5] Phase 7: Frontend Web Application & Assets ............ ✅ 11/11 PASSED (100%)
 ================================================================================
-🏆 MASTER SCORECARD: 117 / 117 Assertions Passing (100%) in 2.52s
+🏆 MASTER SCORECARD: 117 / 117 Assertions Passing (100%)
 ================================================================================
 ```
 
-To run all tests:
+Run all tests locally:
 ```bash
-cd ucss
 python3 scripts/run-all-tests.py
 ```
 
@@ -108,85 +223,91 @@ python3 scripts/run-all-tests.py
 ### 1. Prerequisites
 - **Node.js** >= 20.x
 - **pnpm** >= 9.x
-- **PostgreSQL** 16 (running locally on port 5432)
-- **Python** 3.x (for running test suites and daemon scripts)
+- **PostgreSQL** 16 (or Docker)
+- **Python** 3.10+
 
-### 2. Start the Application
-The repository includes a process daemon that builds and runs the unified service:
+### 2. Environment Setup
 ```bash
-cd ucss
+# Clone the repository
+git clone https://github.com/shaurya-sps/unified-cloud-storage-system.git
+cd unified-cloud-storage-system
 
-# Check daemon status and health
-python3 scripts/dev-server.py status
+# Install dependencies across all packages
+pnpm install
 
-# Restart the daemon
-python3 scripts/dev-server.py restart
-
-# View real-time application logs
-python3 scripts/dev-server.py logs 50
+# Copy configuration template
+cp .env.example .env
 ```
 
-### 3. Open the Web Application
-Open your browser to:
+Generate your cryptographic secrets:
+```bash
+# Generate JWT Secrets (run twice for access and refresh)
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+
+# Generate 32-byte AES-256-GCM Token Encryption Key
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
-http://localhost:4000
+Paste the outputs into `.env`:
+```ini
+JWT_ACCESS_SECRET=your_generated_access_secret
+JWT_REFRESH_SECRET=your_generated_refresh_secret
+TOKEN_ENCRYPTION_KEY=your_generated_64_char_hex_key
 ```
-- **Sign In:** Click **"Fill Demo"** to auto-populate test credentials, or register a new user.
-- **Attach 10 Accounts:** Open **"Drive Accounts"** and click **"Load 10-Account Demo Fabric (150 GB)"** to attach 10 simulated accounts.
-- **Upload / Download:** Upload files to test the allocation engine, streaming download pipeline, SHA-256 checksums, and renaming.
-- **System Diagnostics:** Open **"Diagnostics"** to view real-time PostgreSQL file lifecycle distribution and trigger the self-healing reconciliation worker.
+
+### 3. Google OAuth Setup
+1. Open the [Google Cloud Console](https://console.cloud.google.com/apis/credentials).
+2. Create an **OAuth 2.0 Client ID** (Web application).
+3. Set **Authorized redirect URIs** to:
+   ```
+   http://localhost:4000/api/oauth/google/callback
+   ```
+4. Copy Client ID and Client Secret into `.env`:
+   ```ini
+   GOOGLE_CLIENT_ID=your_id.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=GOCSPX-your_secret
+   GOOGLE_REDIRECT_URI=http://localhost:4000/api/oauth/google/callback
+   ```
+
+### 4. Database Initialization & Start
+```bash
+# Start PostgreSQL via Docker Compose (if not using local Postgres)
+docker-compose up -d postgres
+
+# Run database migrations
+pnpm --filter @ucss/database prisma migrate deploy
+
+# Start the unified daemon
+python3 scripts/dev-server.py start
+```
+
+Open [http://localhost:4000](http://localhost:4000) in your browser. Register your account and link your Google accounts into the pool!
 
 ---
 
-## 📂 Repository Layout
+## 📁 Monorepo Layout
 
 ```
-ucss/
 ├── apps/
-│   ├── api/                     # Node.js + Express backend modular monolith
-│   │   ├── src/
-│   │   │   ├── routes/          # REST API endpoints (auth, accounts, files, oauth, admin)
-│   │   │   ├── services/        # Business logic (allocation, files, accounts, drive, recon)
-│   │   │   ├── middleware/      # Auth JWT verification, Zod validation, error handling
-│   │   │   └── lib/             # Crypto AES-256-GCM, environment validation, logger
-│   │   └── dist/                # Production esbuild bundle
-│   └── web/                     # React 18 + TypeScript + Vite + Tailwind CSS frontend
-│       ├── src/
-│       │   ├── components/      # Navbar, StorageOverview, FileManager, AccountsModal, etc.
-│       │   └── lib/api.ts       # Typed API client with automatic token rotation
-│       └── dist/                # Production Vite build
+│   ├── api/                     # Express modular monolith API server
+│   │   ├── src/routes/          # REST endpoints (auth, accounts, files, oauth, admin)
+│   │   ├── src/services/        # Business logic (allocation, files, accounts, drive, recon)
+│   │   └── src/middleware/      # JWT auth, Zod validation, error handling, rate limiting
+│   └── web/                     # React 18 SPA (Vite + Tailwind CSS)
+│       ├── src/components/      # StorageOverview, FileManager, UploadModal, AccountsModal
+│       └── src/lib/api.ts       # Typed API client with auto-refresh & token persistence
 ├── packages/
-│   ├── database/                # Prisma schema + PostgreSQL migrations + raw SQL library
-│   │   └── src/queries/         # Handcrafted raw SQL queries (allocation, files, reconciliation)
-│   └── shared/                  # TypeScript DTOs, domain types, and API response envelopes
+│   ├── database/                # PostgreSQL schema, migrations, raw SQL query modules
+│   └── shared/                  # Shared TypeScript DTOs, interfaces, API envelopes
 ├── scripts/
-│   ├── dev-server.py            # Local process manager (start, stop, status, logs)
-│   ├── run.py                   # Process wrapper preventing terminal hangs
-│   ├── run-all-tests.py         # Unified test runner (117 assertions)
-│   ├── test-auth-e2e.py         # Phase 2 test suite
-│   ├── test-phase3-accounts.py  # Phase 3 test suite
-│   ├── test-phase4-5-files.py   # Phase 4 & 5 test suite
-│   ├── test-phase6-reconciliation.py # Phase 6 test suite
-│   └── test-phase7-frontend.py  # Phase 7 test suite
-└── docs/                        # Complete phase specifications & architectural handoffs
-    ├── phase-0-and-1-database.md
-    ├── phase-2-auth.md
-    ├── phase-3-google-oauth-and-accounts.md
-    ├── phase-4-and-5-allocation-and-files.md
-    ├── phase-6-reconciliation.md
-    ├── phase-7-frontend.md
-    └── phase-8-master-deployment-and-operations.md
+│   ├── dev-server.py            # Process daemon & production runner
+│   └── run-all-tests.py         # Master integration test runner (117 assertions)
+└── docs/                        # Architectural documentation & phase handoffs
 ```
 
 ---
 
-## 📖 Phase Documentation Directory
+## 📄 License & Governance
 
-Complete architectural records, SQL query explanations, and self-score evaluations are documented in `/docs`:
-- [Phase 0 & 1: Infrastructure & PostgreSQL Schema](file:///docs/phase-0-and-1-database.md) (Score: 98/100)
-- [Phase 2: Authentication & Quota Aggregation](file:///docs/phase-2-auth.md) (Score: 99/100)
-- [Phase 3: Multi-Account Manager & AES-256 Tokens](file:///docs/phase-3-google-oauth-and-accounts.md) (Score: 99/100)
-- [Phase 4 & 5: Storage Allocation Engine & Files](file:///docs/phase-4-and-5-allocation-and-files.md) (Score: 99/100)
-- [Phase 6: Reliability & Background Reconciliation](file:///docs/phase-6-reconciliation.md) (Score: 99/100)
-- [Phase 7: Frontend Web Application & Assets](file:///docs/phase-7-frontend.md) (Score: 99/100)
-- [Phase 8: Master Deployment & Operations](file:///docs/phase-8-master-deployment-and-operations.md) (Score: 100/100)
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for details.  
+For security disclosures, please review [`SECURITY.md`](SECURITY.md).  
+Guidelines for contributing can be found in [`CONTRIBUTING.md`](CONTRIBUTING.md).

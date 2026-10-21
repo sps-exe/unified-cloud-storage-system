@@ -1,46 +1,51 @@
-# ─── Environment Files (NEVER commit these) ────────────────────────────────────
+# ─── Environment Files (NEVER commit secrets) ─────────────────────────────────
 .env
-.env.local
-.env.production
-.env.*.local
+.env.*
+!.env.example
+*.env
 
-# ─── Dependencies ────────────────────────────────────────────────────────────────
+# ─── Dependencies ─────────────────────────────────────────────────────────────
 node_modules/
 .pnpm-store/
 
-# ─── Build Outputs ────────────────────────────────────────────────────────────────
+# ─── Build Outputs ─────────────────────────────────────────────────────────────
 dist/
 build/
 *.js.map
 *.d.ts.map
+apps/api/dist/
+apps/web/dist/
 
-# ─── Turbo Cache ──────────────────────────────────────────────────────────────────
-.turbo/
-
-# ─── Prisma Generated ────────────────────────────────────────────────────────────
-# (generated client is rebuilt from schema — don't commit)
-packages/database/node_modules/.prisma/
-
-# ─── Logs ────────────────────────────────────────────────────────────────────────
+# ─── Process & Runtime Artifacts ──────────────────────────────────────────────
+*.pid
 *.log
 logs/
 pino.log
+*.sample.txt
 
-# ─── Testing ─────────────────────────────────────────────────────────────────────
+# ─── Turbo Cache ───────────────────────────────────────────────────────────────
+.turbo/
+
+# ─── Prisma Generated ─────────────────────────────────────────────────────────
+packages/database/node_modules/.prisma/
+
+# ─── Testing & Coverage ───────────────────────────────────────────────────────
 coverage/
 .nyc_output/
 
-# ─── OS Files ────────────────────────────────────────────────────────────────────
+# ─── OS Files ─────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
-# ─── IDE ──────────────────────────────────────────────────────────────────────────
-.vscode/settings.json
+# ─── IDE & Editor ─────────────────────────────────────────────────────────────
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
 
-# ─── Temporary Upload Files ──────────────────────────────────────────────────────
+# ─── Temporary Upload Files ───────────────────────────────────────────────────
 uploads/
 tmp/
 temp/

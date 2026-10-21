@@ -38,14 +38,15 @@ export class AllocationService {
     displayFilename?: string;
     fileSizeBytes: bigint;
     mimeType?: string;
+    driveAccountId?: string;
   }): Promise<AllocationResult> {
-    const { userId, originalFilename, fileSizeBytes } = input;
+    const { userId, originalFilename, fileSizeBytes, driveAccountId } = input;
     const displayFilename = input.displayFilename?.trim() || originalFilename;
     const mimeType = input.mimeType || 'application/octet-stream';
     const safetyMargin = env.QUOTA_SAFETY_MARGIN_BYTES; // e.g. 500 MB
 
     return await prisma.$transaction(async (tx) => {
-      // 1. Select the account with the most available headroom that can fit this file
+      // 1. Select the account with the most available headroom that can fit this file, or the requested specific account
       interface EligibleAccount {
         id: string;
         google_email: string;
@@ -55,35 +56,62 @@ export class AllocationService {
         effective_available: string;
       }
 
-      const eligible = await tx.$queryRaw<Array<EligibleAccount>>`
-        SELECT 
-          da.id,
-          da.google_email,
-          da.quota_limit_bytes::text,
-          da.quota_used_bytes::text,
-          da.reserved_bytes::text,
-          (da.quota_limit_bytes - da.quota_used_bytes - da.reserved_bytes - ${safetyMargin}::bigint)::text AS effective_available
-        FROM drive_accounts da
-        WHERE 
-          da.user_id = ${userId}::uuid
-          AND da.status = 'ACTIVE'
-          AND (da.quota_limit_bytes - da.quota_used_bytes - da.reserved_bytes - ${safetyMargin}::bigint) >= ${fileSizeBytes}::bigint
-        ORDER BY 
-          (da.quota_limit_bytes - da.quota_used_bytes - da.reserved_bytes) DESC,
-          da.quota_last_synced_at ASC NULLS LAST
-        LIMIT 1
-        FOR UPDATE;
-      `;
+      let bestAccount: EligibleAccount | undefined;
 
-      const bestAccount = eligible[0];
-      if (!bestAccount) {
-        logger.warn(
-          { userId, fileSize: fileSizeBytes.toString() },
-          'Storage allocation failed: insufficient capacity across all connected accounts',
-        );
-        throw new QuotaExceededError(
-          'No connected Google Drive account has sufficient storage for this file (500 MB safety margin enforced)',
-        );
+      if (driveAccountId) {
+        const specific = await tx.$queryRaw<Array<EligibleAccount>>`
+          SELECT 
+            da.id,
+            da.google_email,
+            da.quota_limit_bytes::text,
+            da.quota_used_bytes::text,
+            da.reserved_bytes::text,
+            (da.quota_limit_bytes - da.quota_used_bytes - da.reserved_bytes - ${safetyMargin}::bigint)::text AS effective_available
+          FROM drive_accounts da
+          WHERE 
+            da.id = ${driveAccountId}::uuid
+            AND da.user_id = ${userId}::uuid
+            AND da.status = 'ACTIVE'
+            AND (da.quota_limit_bytes - da.quota_used_bytes - da.reserved_bytes - ${safetyMargin}::bigint) >= ${fileSizeBytes}::bigint
+          LIMIT 1
+          FOR UPDATE;
+        `;
+        bestAccount = specific[0];
+        if (!bestAccount) {
+          throw new QuotaExceededError(
+            'The selected Google Drive account does not have sufficient available storage for this file (500 MB safety margin enforced)',
+          );
+        }
+      } else {
+        const eligible = await tx.$queryRaw<Array<EligibleAccount>>`
+          SELECT 
+            da.id,
+            da.google_email,
+            da.quota_limit_bytes::text,
+            da.quota_used_bytes::text,
+            da.reserved_bytes::text,
+            (da.quota_limit_bytes - da.quota_used_bytes - da.reserved_bytes - ${safetyMargin}::bigint)::text AS effective_available
+          FROM drive_accounts da
+          WHERE 
+            da.user_id = ${userId}::uuid
+            AND da.status = 'ACTIVE'
+            AND (da.quota_limit_bytes - da.quota_used_bytes - da.reserved_bytes - ${safetyMargin}::bigint) >= ${fileSizeBytes}::bigint
+          ORDER BY 
+            (da.quota_limit_bytes - da.quota_used_bytes - da.reserved_bytes) DESC,
+            da.quota_last_synced_at ASC NULLS LAST
+          LIMIT 1
+          FOR UPDATE;
+        `;
+        bestAccount = eligible[0];
+        if (!bestAccount) {
+          logger.warn(
+            { userId, fileSize: fileSizeBytes.toString() },
+            'Storage allocation failed: insufficient capacity across all connected accounts',
+          );
+          throw new QuotaExceededError(
+            'No connected Google Drive account has sufficient storage for this file (500 MB safety margin enforced)',
+          );
+        }
       }
 
       // 2. Acquire transaction-level advisory lock on this account ID hash

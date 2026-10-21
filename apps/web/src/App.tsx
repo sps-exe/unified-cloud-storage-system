@@ -47,8 +47,10 @@ export function App() {
   const fetchProfileAndStorage = useCallback(async () => {
     try {
       const res = await api.request<{
-        user: { id: string; email: string };
-        storage: {
+        id?: string;
+        email?: string;
+        user?: { id: string; email: string };
+        storage?: {
           totalQuotaBytes: string;
           totalUsedBytes: string;
           totalAvailableBytes: string;
@@ -57,16 +59,22 @@ export function App() {
         };
       }>('/api/auth/me');
 
-      if (res.ok) {
+      if (res.ok && res.data) {
         setIsAuthenticated(true);
-        setUserEmail(res.data.user.email);
-        setTotalQuotaBytes(res.data.storage.totalQuotaBytes);
-        setTotalUsedBytes(res.data.storage.totalUsedBytes);
-        setTotalAvailableBytes(res.data.storage.totalAvailableBytes);
-        setTotalReservedBytes(res.data.storage.totalReservedBytes);
-        setActiveAccountsCount(res.data.storage.activeAccountsCount);
+        const resolvedEmail = res.data.email || res.data.user?.email || '';
+        if (resolvedEmail) setUserEmail(resolvedEmail);
+        if (res.data.storage) {
+          setTotalQuotaBytes(res.data.storage.totalQuotaBytes);
+          setTotalUsedBytes(res.data.storage.totalUsedBytes);
+          setTotalAvailableBytes(res.data.storage.totalAvailableBytes);
+          setTotalReservedBytes(res.data.storage.totalReservedBytes);
+          setActiveAccountsCount(res.data.storage.activeAccountsCount);
+        }
+      } else {
+        setIsAuthenticated(false);
       }
-    } catch {
+    } catch (err) {
+      console.warn('Session verification failed:', err);
       setIsAuthenticated(false);
     }
   }, []);
@@ -135,6 +143,7 @@ export function App() {
       await api.request('/api/auth/logout', { method: 'POST' });
     } finally {
       api.setToken(null);
+      api.setRefreshToken(null);
       setIsAuthenticated(false);
     }
   };
@@ -149,7 +158,14 @@ export function App() {
   }
 
   if (!isAuthenticated) {
-    return <AuthModal onSuccess={() => setIsAuthenticated(true)} />;
+    return (
+      <AuthModal
+        onSuccess={() => {
+          setIsAuthenticated(true);
+          fetchProfileAndStorage();
+        }}
+      />
+    );
   }
 
   const totalCapacityGb = Number(totalQuotaBytes) / (1024 * 1024 * 1024);

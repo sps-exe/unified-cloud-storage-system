@@ -61,6 +61,7 @@ const initiateUploadSchema = z.object({
     }
   }),
   mimeType: z.string().optional(),
+  driveAccountId: z.string().uuid().optional(),
 });
 
 const listFilesQuerySchema = z.object({
@@ -86,7 +87,7 @@ const renameFileSchema = z.object({
 async function handleAllocate(req: Request, res: Response, next: NextFunction) {
   try {
     const userId = req.user!.id;
-    const { originalFilename, displayFilename, fileSizeBytes, mimeType } = req.body;
+    const { originalFilename, displayFilename, fileSizeBytes, mimeType, driveAccountId } = req.body;
 
     const allocation = await AllocationService.allocateStorage({
       userId,
@@ -94,6 +95,7 @@ async function handleAllocate(req: Request, res: Response, next: NextFunction) {
       displayFilename,
       fileSizeBytes,
       mimeType,
+      driveAccountId,
     });
 
     res.status(201).json({
@@ -150,12 +152,14 @@ filesRouter.post('/upload', requireAuth, handleMultipart, async (req: Request, r
     } else {
       // 2. Perform on-the-fly allocation
       const displayFilename = req.body.displayFilename || file.originalname;
+      const requestedDriveAccountId = req.body.driveAccountId as string | undefined;
       const alloc = await AllocationService.allocateStorage({
         userId,
         originalFilename: file.originalname,
         displayFilename,
         fileSizeBytes,
         mimeType: file.mimetype,
+        driveAccountId: requestedDriveAccountId,
       });
       fileId = alloc.fileId;
       uploadOperationId = alloc.uploadOperationId;

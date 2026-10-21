@@ -1,0 +1,33 @@
+name: 💡 Feature Request
+description: Suggest an idea or enhancement for UCSS
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea for multi-cloud aggregation, S3-compatible APIs, or advanced SQL indexing? Let us know!
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your feature request related to a problem?
+      description: A clear description of the problem or limitation you're encountering.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution / Enhancement
+      description: Describe what you want to happen and how you envision it working.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternative Solutions Considered
+      description: Any alternative options or workarounds you've considered.
+  - type: checkboxes
+    id: willingness
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to submit a PR to implement this feature.
