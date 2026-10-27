@@ -74,5 +74,5 @@ jobs:
             curl -s http://localhost:4000/api/health && break || sleep 1
           done
 
-      - name: 🧪 Execute Master Integration Test Suite (117+ Assertions)
+      - name: 🧪 Execute Master Integration Test Suite (138 Assertions)
         run: python3 scripts/run-all-tests.py
