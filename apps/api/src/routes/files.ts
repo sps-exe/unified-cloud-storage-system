@@ -288,10 +288,11 @@ filesRouter.get('/:id', requireAuth, async (req: Request, res: Response, next: N
 });
 
 /**
- * GET /api/files/:id/download
- * Prepares and streams file contents from Google Drive to client.
+ * Handles streaming file contents from Google Drive to client.
+ * Supports HTTP 206 Partial Content (Range requests) for seeking in videos/audio
+ * and inline preview for images, documents, and code.
  */
-filesRouter.get('/:id/download', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+async function handleFileStream(req: Request, res: Response, next: NextFunction, forceInline = false) {
   try {
     const userId = req.user!.id;
     const fileId = String(req.params.id || '');
@@ -301,25 +302,76 @@ filesRouter.get('/:id/download', requireAuth, async (req: Request, res: Response
       throw new AppError(404, 'FILE_NOT_READY', 'File content is not ready or has no Drive reference');
     }
 
-    const fileStream = await GoogleDriveService.downloadFileStream({
-      encryptedRefreshToken,
-      driveFileId: file.driveFileId,
-    });
+    const totalSize = BigInt(file.sizeBytes);
+    const rangeHeader = req.headers.range;
+    const isInline = forceInline || req.query.inline === 'true';
+    const dispositionType = isInline ? 'inline' : 'attachment';
 
+    res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(file.displayFilename)}"`,
+      `${dispositionType}; filename="${encodeURIComponent(file.displayFilename)}"`,
     );
-    res.setHeader('Content-Length', file.sizeBytes);
     if (file.checksumSha256) {
       res.setHeader('ETag', `"${file.checksumSha256}"`);
     }
 
-    fileStream.pipe(res);
+    if (rangeHeader && rangeHeader.startsWith('bytes=')) {
+      const parts = rangeHeader.replace(/bytes=/, '').split('-');
+      const startStr = parts[0]?.trim();
+      const endStr = parts[1]?.trim();
+
+      const start = startStr ? BigInt(startStr) : BigInt(0);
+      const end = endStr ? BigInt(endStr) : (totalSize - BigInt(1));
+
+      if (start >= totalSize || end >= totalSize || start > end) {
+        res.status(416);
+        res.setHeader('Content-Range', `bytes */${totalSize}`);
+        res.end();
+        return;
+      }
+
+      const chunkSize = end - start + BigInt(1);
+      const fileStream = await GoogleDriveService.downloadFileStream({
+        encryptedRefreshToken,
+        driveFileId: file.driveFileId,
+        range: `bytes=${start}-${end}`,
+      });
+
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${totalSize}`);
+      res.setHeader('Content-Length', chunkSize.toString());
+      fileStream.pipe(res);
+    } else {
+      const fileStream = await GoogleDriveService.downloadFileStream({
+        encryptedRefreshToken,
+        driveFileId: file.driveFileId,
+      });
+
+      res.status(200);
+      res.setHeader('Content-Length', totalSize.toString());
+      fileStream.pipe(res);
+    }
   } catch (err) {
     next(err);
   }
+}
+
+/**
+ * GET /api/files/:id/download
+ * Prepares and streams file contents as an attachment.
+ */
+filesRouter.get('/:id/download', requireAuth, (req: Request, res: Response, next: NextFunction) => {
+  handleFileStream(req, res, next, false);
+});
+
+/**
+ * GET /api/files/:id/stream
+ * Prepares and streams file contents inline with HTTP Range support for video/audio/PDF.
+ */
+filesRouter.get('/:id/stream', requireAuth, (req: Request, res: Response, next: NextFunction) => {
+  handleFileStream(req, res, next, true);
 });
 
 /**

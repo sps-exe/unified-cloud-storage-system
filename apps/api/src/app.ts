@@ -25,6 +25,7 @@ import { accountsRouter } from './routes/accounts.js';
 import { filesRouter } from './routes/files.js';
 import { oauthRouter } from './routes/oauth.js';
 import { adminRouter } from './routes/admin.js';
+import { webdavRouter } from './routes/webdav.js';
 
 export function createApp() {
   const app = express();
@@ -45,6 +46,21 @@ export function createApp() {
       : { contentSecurityPolicy: false }
   ));
 
+  // ─── WebDAV Pre-Routing Discovery Interceptor (RFC 4918) ────────────────────
+  app.options('/webdav*', (_req, res) => {
+    res.setHeader('DAV', '1, 2');
+    res.setHeader('MS-Author-Via', 'DAV');
+    res.setHeader(
+      'Allow',
+      'OPTIONS, GET, HEAD, POST, PUT, DELETE, PROPFIND, PROPPATCH, MKCOL, COPY, MOVE, LOCK, UNLOCK',
+    );
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PROPFIND, MKCOL, MOVE, COPY, LOCK, UNLOCK, PROPPATCH, HEAD');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Depth, Destination, Range, If, Lock-Token, Timeout');
+    res.setHeader('Access-Control-Expose-Headers', 'DAV, Lock-Token, Content-Range, Accept-Ranges');
+    res.status(200).end();
+  });
+
   // ─── CORS ────────────────────────────────────────────────────────────────────
   app.use(cors({
     origin: (origin, callback) => {
@@ -63,9 +79,9 @@ export function createApp() {
       return callback(null, true); // Permissive in dev/local for seamless multi-port development
     },
     credentials: true, // Required for cookie-based refresh tokens
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
-    exposedHeaders: ['X-Request-ID'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS', 'PROPFIND', 'MKCOL', 'MOVE', 'COPY', 'LOCK', 'UNLOCK', 'PROPPATCH', 'HEAD', 'PUT'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'Depth', 'Destination', 'Range', 'If', 'Lock-Token', 'Timeout'],
+    exposedHeaders: ['X-Request-ID', 'DAV', 'Lock-Token', 'Content-Range', 'Accept-Ranges'],
   }));
 
   // ─── Rate Limiting ────────────────────────────────────────────────────────────
@@ -132,13 +148,14 @@ export function createApp() {
   app.use('/api/accounts', accountsRouter);
   app.use('/api/files', filesRouter);
   app.use('/api/admin', adminRouter);
+  app.use('/webdav', webdavRouter);
 
   // ─── Static Frontend Serving (Unified Deployment Mode) ───────────────────────
   const webDistPath = path.resolve(process.cwd(), '../web/dist');
   if (fs.existsSync(webDistPath)) {
     app.use(express.static(webDistPath));
     app.get('*', (req, res, next) => {
-      if (req.path.startsWith('/api')) return next();
+      if (req.path.startsWith('/api') || req.path.startsWith('/webdav')) return next();
       res.sendFile(path.join(webDistPath, 'index.html'));
     });
   }

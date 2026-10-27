@@ -5,6 +5,8 @@ import {
   Download,
   Edit2,
   Trash2,
+  Eye,
+  Lock,
   FileText,
   FileImage,
   FileVideo,
@@ -18,6 +20,7 @@ import {
   Check,
 } from './icons';
 import { api, formatBytes, resolveUrl } from '../lib/api';
+import { FilePreviewModal } from './FilePreviewModal';
 import type { FileDto, DriveAccountDto, PaginationMeta } from '@ucss/shared';
 
 interface FileManagerProps {
@@ -61,6 +64,7 @@ export const FileManager: React.FC<FileManagerProps> = ({
   const [renamingFile, setRenamingFile] = useState<FileDto | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deletingFile, setDeletingFile] = useState<FileDto | null>(null);
+  const [previewFile, setPreviewFile] = useState<FileDto | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   const getFileIcon = (mime: string) => {
@@ -262,14 +266,29 @@ export const FileManager: React.FC<FileManagerProps> = ({
                 >
                   {/* Name & Icon */}
                   <td className="py-3 px-4">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="p-2 rounded-lg bg-slate-800/80 shrink-0">
-                        {getFileIcon(file.mimeType)}
+                    <div
+                      onClick={() => setPreviewFile(file)}
+                      className="flex items-center gap-3 min-w-0 cursor-pointer group/title"
+                      title="Click to preview file"
+                    >
+                      <div className="p-2 rounded-lg bg-slate-800/80 group-hover/title:bg-indigo-600/20 transition shrink-0">
+                        {file.displayFilename.endsWith('.enc') ? (
+                          <Lock className="h-5 w-5 text-amber-400" />
+                        ) : (
+                          getFileIcon(file.mimeType)
+                        )}
                       </div>
                       <div className="min-w-0">
-                        <p className="font-medium text-white truncate max-w-[200px] sm:max-w-xs" title={file.displayFilename}>
-                          {file.displayFilename}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-medium text-white group-hover/title:text-indigo-300 transition truncate max-w-[200px] sm:max-w-xs" title={file.displayFilename}>
+                            {file.displayFilename}
+                          </p>
+                          {file.displayFilename.endsWith('.enc') && (
+                            <span className="px-1.5 py-0.5 text-[9px] font-semibold bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded shrink-0">
+                              ZK
+                            </span>
+                          )}
+                        </div>
                         {file.originalFilename !== file.displayFilename && (
                           <p className="text-[10px] text-slate-500 truncate" title={`Original: ${file.originalFilename}`}>
                             orig: {file.originalFilename}
@@ -326,6 +345,13 @@ export const FileManager: React.FC<FileManagerProps> = ({
                   {/* Actions */}
                   <td className="py-3 px-4 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => setPreviewFile(file)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-400 hover:bg-slate-800 transition"
+                        title="Preview / Stream File"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
                       <button
                         onClick={() => handleDownload(file.id, file.displayFilename)}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-400 hover:bg-slate-800 transition"
@@ -460,6 +486,14 @@ export const FileManager: React.FC<FileManagerProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Interactive Media & Document Preview Modal */}
+      {previewFile && (
+        <FilePreviewModal
+          file={previewFile}
+          onClose={() => setPreviewFile(null)}
+        />
       )}
     </div>
   );

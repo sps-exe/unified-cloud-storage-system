@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { X, UploadCloud, File, AlertCircle, HardDrive } from './icons';
+import { X, UploadCloud, File, AlertCircle, HardDrive, Lock, Key } from './icons';
 import { api, formatBytes, resolveUrl } from '../lib/api';
+import { encryptFileClientSide } from '../lib/zk-crypto';
 import type { DriveAccountDto } from '@ucss/shared';
 
 interface UploadModalProps {
@@ -23,6 +24,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [encryptVault, setEncryptVault] = useState(false);
+  const [vaultPassphrase, setVaultPassphrase] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -67,13 +70,27 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     setError(null);
 
     try {
+      let fileToUpload = selectedFile;
+      let finalDisplayName = displayName || selectedFile.name;
+
+      if (encryptVault) {
+        if (!vaultPassphrase.trim()) {
+          throw new Error('Please enter a master passphrase for zero-knowledge encryption');
+        }
+        setUploadProgress(15);
+        fileToUpload = await encryptFileClientSide(selectedFile, vaultPassphrase.trim());
+        if (!finalDisplayName.endsWith('.enc')) {
+          finalDisplayName = `${finalDisplayName}.enc`;
+        }
+      }
+
       // 1. Pre-flight allocation
       setUploadProgress(30);
       const allocPayload: Record<string, unknown> = {
-        originalFilename: selectedFile.name,
-        displayFilename: displayName || selectedFile.name,
-        fileSizeBytes: selectedFile.size,
-        mimeType: selectedFile.type || 'application/octet-stream',
+        originalFilename: fileToUpload.name,
+        displayFilename: finalDisplayName,
+        fileSizeBytes: fileToUpload.size,
+        mimeType: encryptVault ? 'application/octet-stream' : (fileToUpload.type || 'application/octet-stream'),
       };
       if (selectedAccountId && selectedAccountId !== 'auto') {
         allocPayload.driveAccountId = selectedAccountId;
@@ -93,10 +110,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
       // 2. Multipart upload
       const formData = new FormData();
-      formData.append('file', selectedFile);
+      formData.append('file', fileToUpload);
       formData.append('fileId', allocRes.data.fileId);
       formData.append('uploadOperationId', allocRes.data.uploadOperationId);
-      formData.append('displayFilename', displayName || selectedFile.name);
+      formData.append('displayFilename', finalDisplayName);
       if (selectedAccountId && selectedAccountId !== 'auto') {
         formData.append('driveAccountId', selectedAccountId);
       }
@@ -264,6 +281,49 @@ export const UploadModal: React.FC<UploadModalProps> = ({
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block shrink-0" />
               <span>500 MB safety margin enforced per account to prevent hard quota boundary errors.</span>
             </p>
+          </div>
+
+          {/* Zero-Knowledge Client-Side Encryption Toggle */}
+          <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Lock className="h-4 w-4 text-amber-400" />
+                <div>
+                  <span className="text-xs font-semibold text-slate-200 block">Zero-Knowledge Vault</span>
+                  <span className="text-[10px] text-slate-500">Encrypt with client-side AES-256-GCM before upload</span>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={encryptVault}
+                  onChange={(e) => setEncryptVault(e.target.checked)}
+                  disabled={isUploading}
+                  className="sr-only peer"
+                />
+                <div className="w-8 h-4 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-amber-500"></div>
+              </label>
+            </div>
+
+            {encryptVault && (
+              <div className="space-y-1.5 pt-1 border-t border-slate-800/80">
+                <label className="text-[11px] text-slate-400 block font-medium">
+                  Master Passphrase (NEVER sent to backend or Google)
+                </label>
+                <div className="relative">
+                  <Key className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
+                  <input
+                    type="password"
+                    value={vaultPassphrase}
+                    onChange={(e) => setVaultPassphrase(e.target.value)}
+                    placeholder="Enter strong encryption passphrase"
+                    disabled={isUploading}
+                    className="w-full pl-8 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 font-mono"
+                    required={encryptVault}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Progress bar */}

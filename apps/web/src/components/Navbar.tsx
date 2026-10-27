@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, HardDrive, LogOut, ShieldCheck, User } from './icons';
+import { Database, HardDrive, LogOut, ShieldCheck, User, Folder } from './icons';
 
 interface NavbarProps {
   userEmail: string;
@@ -7,6 +7,7 @@ interface NavbarProps {
   totalCapacityGb: number;
   onOpenAccounts: () => void;
   onOpenAdmin: () => void;
+  onOpenWebdav: () => void;
   onLogout: () => void;
 }
 
@@ -16,6 +17,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   totalCapacityGb,
   onOpenAccounts,
   onOpenAdmin,
+  onOpenWebdav,
   onLogout,
 }) => {
   return (
@@ -51,6 +53,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Actions */}
         <div className="flex items-center gap-3">
+          <button
+            onClick={onOpenWebdav}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 transition shadow-sm"
+            title="Mount as local network drive in macOS Finder or Windows Explorer"
+          >
+            <Folder className="h-4 w-4 text-indigo-400" />
+            <span className="hidden sm:inline">Network Drive</span>
+          </button>
+
           <button
             onClick={onOpenAccounts}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"

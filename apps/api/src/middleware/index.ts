@@ -35,11 +35,18 @@ declare global {
 export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
   try {
     const authHeader = req.headers['authorization'];
-    if (!authHeader?.startsWith('Bearer ')) {
+    let token: string | undefined;
+
+    if (authHeader?.startsWith('Bearer ')) {
+      token = authHeader.slice(7);
+    } else if (typeof req.query.token === 'string' && req.query.token) {
+      token = req.query.token;
+    }
+
+    if (!token) {
       throw new UnauthorizedError('Missing or malformed Authorization header');
     }
 
-    const token = authHeader.slice(7);
     const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as JwtPayload;
 
     req.user = { id: payload['sub'], email: payload['email'] };

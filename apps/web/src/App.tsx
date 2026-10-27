@@ -6,6 +6,7 @@ import { FileManager } from './components/FileManager';
 import { AccountsModal } from './components/AccountsModal';
 import { UploadModal } from './components/UploadModal';
 import { AdminHealthModal } from './components/AdminHealthModal';
+import { WebdavModal } from './components/WebdavModal';
 import { AuthModal } from './components/AuthModal';
 import type { FileDto, DriveAccountDto, PaginationMeta } from '@ucss/shared';
 
@@ -42,6 +43,7 @@ export function App() {
   const [isAccountsOpen, setIsAccountsOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isWebdavOpen, setIsWebdavOpen] = useState(false);
 
   // 1. Fetch user profile and unified storage stats
   const fetchProfileAndStorage = useCallback(async () => {
@@ -179,6 +181,7 @@ export function App() {
         totalCapacityGb={totalCapacityGb}
         onOpenAccounts={() => setIsAccountsOpen(true)}
         onOpenAdmin={() => setIsAdminOpen(true)}
+        onOpenWebdav={() => setIsWebdavOpen(true)}
         onLogout={handleLogout}
       />
 
@@ -234,6 +237,12 @@ export function App() {
         isOpen={isAdminOpen}
         onClose={() => setIsAdminOpen(false)}
         onReconciliationComplete={refreshAll}
+      />
+
+      <WebdavModal
+        isOpen={isWebdavOpen}
+        onClose={() => setIsWebdavOpen(false)}
+        userEmail={userEmail}
       />
 
       {/* Footer */}

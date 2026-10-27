@@ -161,15 +161,17 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
     if cmd == "start":
         start()
+    elif cmd == "build":
+        build_bundle()
     elif cmd == "stop":
         stop()
     elif cmd == "restart":
         stop()
-        start()
+        start(force_build=True)
     elif cmd == "status":
         status()
     elif cmd == "logs":
         logs()
     else:
-        print("Usage: dev-server.py {start|stop|restart|status|logs}")
+        print("Usage: dev-server.py {start|stop|restart|build|status|logs}")
         sys.exit(1)

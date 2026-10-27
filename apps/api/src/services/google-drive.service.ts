@@ -278,17 +278,22 @@ export class GoogleDriveService {
   }
 
   /**
-   * Streams a file from Google Drive for client download.
+   * Streams a file from Google Drive for client download with optional byte range.
    */
   static async downloadFileStream(params: {
     encryptedRefreshToken: string;
     driveFileId: string;
+    range?: string;
   }): Promise<stream.Readable> {
     try {
       const driveClient = this.getAuthenticatedClient(params.encryptedRefreshToken);
+      const headers: Record<string, string> = {};
+      if (params.range) {
+        headers['Range'] = params.range;
+      }
       const res = await driveClient.files.get(
         { fileId: params.driveFileId, alt: 'media' },
-        { responseType: 'stream' },
+        { responseType: 'stream', headers },
       );
       return res.data as stream.Readable;
     } catch (error) {
