@@ -16,11 +16,13 @@ Validates:
 import base64
 import json
 import sys
+import uuid
 import urllib.request
 import urllib.error
 
 BASE_URL = "http://localhost:4000"
-TEST_EMAIL = "sps.social01@gmail.com"
+RUN_ID = uuid.uuid4().hex[:8]
+TEST_EMAIL = f"webdav.tester.{RUN_ID}@ucss.internal"
 TEST_PASSWORD = "Password123!"
 
 passed = 0
@@ -39,17 +41,21 @@ print("\n" + "=" * 75)
 print("🚀 STARTING PHASE 8: WEBDAV (RFC 4918) & RANGE STREAMING VERIFICATION")
 print("=" * 75 + "\n")
 
-# 1. Login to obtain access token
+# 1. Register isolated test session
 print("[1/5] Authenticating test session...")
-login_data = json.dumps({"email": TEST_EMAIL, "password": TEST_PASSWORD}).encode()
-req = urllib.request.Request(f"{BASE_URL}/api/auth/login", data=login_data, headers={"Content-Type": "application/json"})
+reg_data = json.dumps({
+    "email": TEST_EMAIL,
+    "password": TEST_PASSWORD,
+    "displayName": "WebDAV Tester"
+}).encode()
+req = urllib.request.Request(f"{BASE_URL}/api/auth/register", data=reg_data, headers={"Content-Type": "application/json"})
 try:
     with urllib.request.urlopen(req) as resp:
         body = json.loads(resp.read().decode())
         token = body["data"]["accessToken"]
         check("Obtained JWT access token for test user", bool(token))
 except Exception as e:
-    print(f"Failed to login: {e}")
+    print(f"Failed to register test user: {e}")
     sys.exit(1)
 
 # 2. Test WebDAV OPTIONS
