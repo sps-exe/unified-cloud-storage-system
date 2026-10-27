@@ -21,83 +21,86 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLogout,
 }) => {
   return (
-    <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-30">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        {/* Brand */}
+    <header className="border-b border-zinc-800 bg-zinc-950 sticky top-0 z-30">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+        {/* Brand Mark */}
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-            <Database className="h-5 w-5 text-white" />
+          <div className="h-8 w-8 rounded-md bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-100">
+            <Database className="h-4 w-4 text-zinc-200" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-lg tracking-tight text-white">UCSS</span>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                10-Drive Fabric
-              </span>
-            </div>
-            <p className="text-xs text-slate-400">Unified Cloud Storage System</p>
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-sm tracking-tight text-zinc-100">UCSS</span>
+            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
+              {activeAccountsCount}D-FABRIC
+            </span>
+            <span className="text-zinc-600 hidden sm:inline">•</span>
+            <span className="text-xs text-zinc-500 hidden sm:inline">Unified Cloud Storage</span>
           </div>
         </div>
 
-        {/* Center / Stats Pill */}
-        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs">
-          <HardDrive className="h-3.5 w-3.5 text-emerald-400" />
-          <span className="text-slate-300">
-            <strong className="text-white">{activeAccountsCount}</strong> Connected Accounts
+        {/* Center / System Fabric Telemetry Pill */}
+        <div className="hidden md:flex items-center gap-2.5 px-3 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-xs">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
-          <span className="text-slate-600">•</span>
-          <span className="text-slate-300">
-            <strong className="text-white">~{totalCapacityGb.toFixed(0)} GB</strong> Aggregated Pool
+          <span className="text-zinc-400">
+            <strong className="text-zinc-200 font-mono tabular-nums">{activeAccountsCount}</strong> Connected Drives
+          </span>
+          <span className="text-zinc-700">|</span>
+          <span className="text-zinc-400">
+            <strong className="text-zinc-200 font-mono tabular-nums">~{totalCapacityGb.toFixed(0)} GB</strong> Aggregated
           </span>
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-3">
+        {/* Action Controls */}
+        <div className="flex items-center gap-2">
           <button
             onClick={onOpenWebdav}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 transition shadow-sm"
-            title="Mount as local network drive in macOS Finder or Windows Explorer"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 hover:border-zinc-700 transition"
+            title="Mount native network drive via WebDAV RFC 4918"
           >
-            <Folder className="h-4 w-4 text-indigo-400" />
-            <span className="hidden sm:inline">Network Drive</span>
+            <Folder className="h-3.5 w-3.5 text-zinc-400" />
+            <span className="hidden sm:inline">WebDAV</span>
           </button>
 
           <button
             onClick={onOpenAccounts}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 hover:border-zinc-700 transition"
+            title="Manage Connected Google Drive Accounts"
           >
-            <HardDrive className="h-4 w-4 text-indigo-400" />
-            <span>Drive Accounts</span>
-            <span className="ml-1 px-1.5 py-0.2 rounded-full bg-indigo-500/20 text-indigo-300 font-mono">
+            <HardDrive className="h-3.5 w-3.5 text-zinc-400" />
+            <span className="hidden sm:inline">Accounts</span>
+            <span className="px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-300 font-mono tabular-nums text-[10px]">
               {activeAccountsCount}
             </span>
           </button>
 
           <button
             onClick={onOpenAdmin}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
-            title="System Diagnostics & Reliability"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 hover:border-zinc-700 transition"
+            title="System Diagnostics & Consistency State Machine"
           >
-            <ShieldCheck className="h-4 w-4 text-amber-400" />
-            <span className="hidden sm:inline">Diagnostics</span>
+            <ShieldCheck className="h-3.5 w-3.5 text-zinc-400" />
+            <span className="hidden sm:inline">Health</span>
           </button>
 
-          <div className="h-4 w-px bg-slate-800" />
+          <div className="h-4 w-px bg-zinc-800 mx-1" />
 
-          {/* User profile & logout */}
+          {/* User Profile & Sign Out */}
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300">
-              <User className="h-4 w-4" />
+            <div className="h-7 w-7 rounded-md bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400">
+              <User className="h-3.5 w-3.5" />
             </div>
-            <span className="text-xs text-slate-300 hidden lg:inline max-w-[140px] truncate" title={userEmail}>
+            <span className="text-xs font-mono text-zinc-400 hidden lg:inline max-w-[150px] truncate" title={userEmail}>
               {userEmail}
             </span>
             <button
               onClick={onLogout}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800/80 transition"
+              className="p-1 rounded-md text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 transition"
               title="Sign Out"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>

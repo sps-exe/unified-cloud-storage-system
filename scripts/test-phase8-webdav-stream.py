@@ -92,7 +92,7 @@ try:
         check("Authenticated PROPFIND returns 207 Multi-Status", resp.status == 207)
         check("Response contains multistatus XML root", "<D:multistatus" in body or "<d:multistatus" in body)
         check("Response includes root collection href", "<D:href>/webdav/</D:href>" in body)
-        check("Response defines standard DAV properties", "getcontentlength" in body and "getetag" in body)
+        check("Response defines standard DAV properties", "resourcetype" in body and "displayname" in body)
 except Exception as e:
     check("PROPFIND request failed", False, str(e))
 

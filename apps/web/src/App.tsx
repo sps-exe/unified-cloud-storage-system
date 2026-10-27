@@ -162,8 +162,8 @@ function DashboardApp() {
 
   if (isAuthenticated === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-400 text-sm">
-        <div className="h-6 w-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin mr-3" />
+      <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-400 text-sm">
+        <div className="h-6 w-6 border-2 border-zinc-800 border-t-zinc-200 rounded-full animate-spin mr-3" />
         <span>Initializing Unified Cloud Storage System...</span>
       </div>
     );
@@ -183,7 +183,7 @@ function DashboardApp() {
   const totalCapacityGb = Number(totalQuotaBytes) / (1024 * 1024 * 1024);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-zinc-800 selection:text-zinc-100">
       {/* Navigation */}
       <Navbar
         userEmail={userEmail}
@@ -205,6 +205,7 @@ function DashboardApp() {
           totalReservedBytes={totalReservedBytes}
           activeAccountsCount={activeAccountsCount}
           totalAccountsCount={accounts.length}
+          accounts={accounts}
           onOpenAccounts={() => setIsAccountsOpen(true)}
         />
 
@@ -263,7 +264,7 @@ function DashboardApp() {
       />
 
       {/* Footer */}
-      <footer className="border-t border-slate-800/80 py-6 text-center text-xs text-slate-500">
+      <footer className="border-t border-zinc-900 py-6 text-center text-xs text-zinc-500">
         <p>Unified Cloud Storage System (UCSS) • PostgreSQL-First Multi-Drive Orchestrator</p>
       </footer>
     </div>

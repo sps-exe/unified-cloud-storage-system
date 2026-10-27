@@ -195,43 +195,43 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({ file, onClos
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 animate-in fade-in duration-150">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Header Bar */}
-        <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between gap-4 bg-slate-950/40">
+        <div className="px-5 py-3.5 border-b border-zinc-800 flex items-center justify-between gap-4 bg-zinc-950/60">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2.5 rounded-xl bg-slate-800 text-indigo-400 shrink-0">
+            <div className="p-2 rounded-lg bg-zinc-800 border border-zinc-700/80 text-zinc-300 shrink-0">
               {isEncrypted ? (
-                <Lock className="h-5 w-5 text-amber-400" />
+                <Lock className="h-4 w-4 text-amber-400" />
               ) : isVideo ? (
-                <FileVideo className="h-5 w-5" />
+                <FileVideo className="h-4 w-4 text-zinc-300" />
               ) : isAudio ? (
-                <FileAudio className="h-5 w-5" />
+                <FileAudio className="h-4 w-4 text-zinc-300" />
               ) : isImage ? (
-                <FileImage className="h-5 w-5" />
+                <FileImage className="h-4 w-4 text-zinc-300" />
               ) : isTextOrCode ? (
-                <FileText className="h-5 w-5" />
+                <FileText className="h-4 w-4 text-zinc-300" />
               ) : (
-                <FileGeneric className="h-5 w-5" />
+                <FileGeneric className="h-4 w-4 text-zinc-300" />
               )}
             </div>
 
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-white truncate max-w-xs sm:max-w-md md:max-w-xl" title={file.displayFilename}>
+                <h3 className="text-xs font-medium font-mono text-zinc-100 truncate max-w-xs sm:max-w-md md:max-w-xl" title={file.displayFilename}>
                   {file.displayFilename}
                 </h3>
                 {isEncrypted && (
-                  <span className="px-2 py-0.5 text-[10px] font-semibold bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-full">
+                  <span className="px-1.5 py-0.5 text-[10px] font-mono font-medium bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded">
                     ZK-Encrypted
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-3 mt-0.5 text-[11px] text-slate-400">
+              <div className="flex items-center gap-2.5 mt-0.5 text-[11px] text-zinc-400 font-mono tabular-nums">
                 <span>{formatBytes(file.sizeBytes)}</span>
-                <span>•</span>
-                <span className="inline-flex items-center gap-1 font-mono text-slate-300">
-                  <HardDrive className="h-3 w-3 text-indigo-400" />
+                <span className="text-zinc-600">•</span>
+                <span className="inline-flex items-center gap-1 text-zinc-300">
+                  <HardDrive className="h-3 w-3 text-zinc-400" />
                   {file.driveAccountEmail}
                 </span>
               </div>
@@ -241,7 +241,7 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({ file, onClos
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={handleDownloadOriginal}
-              className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center gap-1.5 transition shadow-sm"
+              className="px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-medium flex items-center gap-1.5 transition"
               title="Download File"
             >
               <Download className="h-3.5 w-3.5" />
@@ -249,25 +249,25 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({ file, onClos
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition"
               title="Close Preview"
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4" />
             </button>
           </div>
         </div>
 
         {/* Preview Viewer Body */}
-        <div className="flex-1 overflow-auto bg-slate-950 flex flex-col items-center justify-center min-h-[380px] p-4">
+        <div className="flex-1 overflow-auto bg-zinc-950 flex flex-col items-center justify-center min-h-[380px] p-4">
           {/* ── Case 1: ZK-Encrypted File Locked ── */}
           {isEncrypted && !decryptedBlobUrl && (
-            <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center shadow-xl space-y-4">
-              <div className="h-12 w-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
-                <Lock className="h-6 w-6" />
+            <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-xl p-6 text-center shadow-xl space-y-4">
+              <div className="h-10 w-10 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+                <Lock className="h-5 w-5" />
               </div>
               <div>
-                <h4 className="text-base font-semibold text-white">Zero-Knowledge Encrypted Vault</h4>
-                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                <h4 className="text-sm font-semibold text-zinc-100">Zero-Knowledge Encrypted Vault</h4>
+                <p className="text-xs text-zinc-400 mt-1 leading-relaxed font-sans">
                   This file was encrypted in your browser using AES-256-GCM before being stored on Google Drive.
                   Enter the master passphrase to decrypt and view it in memory.
                 </p>
@@ -275,24 +275,24 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({ file, onClos
 
               <form onSubmit={handleDecrypt} className="space-y-3">
                 <div className="relative text-left">
-                  <label className="text-[11px] font-medium text-slate-400 block mb-1">
+                  <label className="text-[11px] font-mono text-zinc-400 block mb-1">
                     Decryption Passphrase
                   </label>
                   <div className="relative">
-                    <Key className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                    <Key className="absolute left-2.5 top-2 h-3.5 w-3.5 text-zinc-500" />
                     <input
                       type="password"
                       value={passphrase}
                       onChange={(e) => setPassphrase(e.target.value)}
                       placeholder="Enter passphrase used during upload"
-                      className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                      className="w-full pl-8 pr-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-md text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 font-mono"
                       required
                     />
                   </div>
                 </div>
 
                 {decryptionError && (
-                  <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2 text-left">
+                  <div className="p-2.5 rounded-md bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2 text-left font-mono">
                     <AlertCircle className="h-4 w-4 shrink-0" />
                     <span>{decryptionError}</span>
                   </div>
@@ -301,17 +301,17 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({ file, onClos
                 <button
                   type="submit"
                   disabled={decrypting || !passphrase.trim()}
-                  className="w-full py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-2"
+                  className="w-full py-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-zinc-950 text-xs font-medium rounded-md transition flex items-center justify-center gap-2"
                 >
                   {decrypting ? (
                     <>
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                      Decrypting In-Memory...
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      <span>Decrypting In-Memory...</span>
                     </>
                   ) : (
                     <>
-                      <Key className="h-4 w-4" />
-                      Decrypt & View
+                      <Key className="h-3.5 w-3.5" />
+                      <span>Decrypt & View</span>
                     </>
                   )}
                 </button>
@@ -327,7 +327,7 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({ file, onClos
                 controls
                 playsInline
                 autoPlay
-                className="max-h-[70vh] max-w-full rounded-xl shadow-2xl border border-slate-800 bg-black"
+                className="max-h-[70vh] max-w-full rounded-lg shadow-2xl border border-zinc-800 bg-black"
               >
                 Your browser does not support HTML5 video streaming.
               </video>
@@ -336,19 +336,19 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({ file, onClos
 
           {/* ── Case 3: Audio Player ── */}
           {(isAudio || (decryptedBlobUrl && decryptedMimeType.startsWith('audio/'))) && (
-            <div className="max-w-lg w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center space-y-6 shadow-2xl">
-              <div className="h-20 w-20 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto shadow-inner">
-                <FileAudio className="h-10 w-10 animate-pulse" />
+            <div className="max-w-lg w-full bg-zinc-900 border border-zinc-800 rounded-xl p-6 text-center space-y-4 shadow-2xl">
+              <div className="h-14 w-14 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 flex items-center justify-center mx-auto">
+                <FileAudio className="h-7 w-7" />
               </div>
               <div>
-                <h4 className="text-base font-semibold text-white">{file.displayFilename}</h4>
-                <p className="text-xs text-slate-400 mt-1">High-fidelity audio stream from Google Drive pool</p>
+                <h4 className="text-sm font-semibold text-zinc-100 font-mono truncate">{file.displayFilename}</h4>
+                <p className="text-xs text-zinc-400 mt-1">Direct stream from Google Drive pool</p>
               </div>
               <audio
                 src={decryptedBlobUrl || streamUrl}
                 controls
                 autoPlay
-                className="w-full rounded-lg"
+                className="w-full rounded-md"
               />
             </div>
           )}
@@ -359,7 +359,7 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({ file, onClos
               <img
                 src={decryptedBlobUrl || streamUrl}
                 alt={file.displayFilename}
-                className="max-h-[68vh] max-w-full rounded-xl object-contain shadow-2xl border border-slate-800/80"
+                className="max-h-[68vh] max-w-full rounded-lg object-contain shadow-2xl border border-zinc-800"
               />
             </div>
           )}
@@ -370,31 +370,31 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({ file, onClos
               <iframe
                 src={decryptedBlobUrl || streamUrl}
                 title={file.displayFilename}
-                className="w-full h-full rounded-xl border border-slate-800 bg-white"
+                className="w-full h-full rounded-lg border border-zinc-800 bg-white"
               />
             </div>
           )}
 
           {/* ── Case 6: Text / Code Viewer ── */}
           {(isTextOrCode || (decryptedBlobUrl && decryptedMimeType.startsWith('text/'))) && (
-            <div className="w-full h-[72vh] flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
-              <div className="px-4 py-2 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400 font-mono">
+            <div className="w-full h-[72vh] flex flex-col bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden shadow-2xl">
+              <div className="px-4 py-2 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between text-xs text-zinc-400 font-mono">
                 <span>{textContent ? `${textContent.split('\n').length} lines` : 'Loading...'}</span>
                 {textContent && (
                   <button
                     onClick={() => copyToClipboard(textContent, 'code')}
-                    className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition"
+                    className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition"
                   >
                     {copiedCode ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-                    <span>{copiedCode ? 'Copied!' : 'Copy Code'}</span>
+                    <span>{copiedCode ? 'Copied' : 'Copy Code'}</span>
                   </button>
                 )}
               </div>
-              <div className="flex-1 overflow-auto p-4 font-mono text-xs text-slate-200 leading-relaxed whitespace-pre selection:bg-indigo-500/30">
+              <div className="flex-1 overflow-auto p-4 font-mono text-xs text-zinc-200 leading-relaxed whitespace-pre selection:bg-zinc-800">
                 {loadingText ? (
-                  <div className="flex items-center justify-center h-full text-slate-500 gap-2">
+                  <div className="flex items-center justify-center h-full text-zinc-500 gap-2">
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    Loading content...
+                    <span>Loading content...</span>
                   </div>
                 ) : textError ? (
                   <div className="text-rose-400 text-center py-12">{textError}</div>
@@ -407,30 +407,30 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({ file, onClos
 
           {/* ── Case 7: Generic Binary File Inspector ── */}
           {!isEncrypted && !isImage && !isVideo && !isAudio && !isPdf && !isTextOrCode && (
-            <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center space-y-5 shadow-2xl">
-              <div className="h-16 w-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto">
-                <FileGeneric className="h-8 w-8" />
+            <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-xl p-6 text-center space-y-4 shadow-2xl">
+              <div className="h-12 w-12 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 flex items-center justify-center mx-auto">
+                <FileGeneric className="h-6 w-6" />
               </div>
               <div>
-                <h4 className="text-base font-semibold text-white">{file.displayFilename}</h4>
-                <p className="text-xs text-slate-400 font-mono mt-1">{file.mimeType}</p>
+                <h4 className="text-sm font-semibold text-zinc-100 font-mono">{file.displayFilename}</h4>
+                <p className="text-xs text-zinc-400 font-mono mt-1">{file.mimeType}</p>
               </div>
 
-              <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-3 text-left space-y-2 text-xs">
-                <div className="flex justify-between text-slate-400">
+              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-left space-y-2 text-xs font-mono">
+                <div className="flex justify-between text-zinc-400">
                   <span>File Size:</span>
-                  <span className="font-mono text-white font-medium">{formatBytes(file.sizeBytes)}</span>
+                  <span className="text-zinc-200 tabular-nums">{formatBytes(file.sizeBytes)}</span>
                 </div>
-                <div className="flex justify-between text-slate-400">
+                <div className="flex justify-between text-zinc-400">
                   <span>Target Node:</span>
-                  <span className="font-mono text-indigo-400 truncate max-w-[180px]">{file.driveAccountEmail}</span>
+                  <span className="text-zinc-300 truncate max-w-[180px]">{file.driveAccountEmail}</span>
                 </div>
                 {file.checksumSha256 && (
-                  <div className="pt-2 border-t border-slate-800">
-                    <span className="text-slate-400 block mb-1">SHA-256 Checksum:</span>
+                  <div className="pt-2 border-t border-zinc-800">
+                    <span className="text-zinc-400 block mb-1">SHA-256 Checksum:</span>
                     <button
                       onClick={() => copyToClipboard(file.checksumSha256!, 'sha')}
-                      className="w-full flex items-center justify-between p-2 rounded-lg bg-slate-900 border border-slate-800 text-[10px] font-mono text-slate-300 hover:text-white transition"
+                      className="w-full flex items-center justify-between p-2 rounded-md bg-zinc-900 border border-zinc-800 text-[10px] font-mono text-zinc-300 hover:text-zinc-100 transition"
                     >
                       <span className="truncate">{file.checksumSha256}</span>
                       {copiedSha ? <Check className="h-3 w-3 text-emerald-400 shrink-0" /> : <Copy className="h-3 w-3 opacity-60 shrink-0" />}
@@ -441,10 +441,10 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({ file, onClos
 
               <button
                 onClick={handleDownloadOriginal}
-                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20"
+                className="w-full py-2 bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-medium rounded-md transition flex items-center justify-center gap-2"
               >
-                <Download className="h-4 w-4" />
-                Download Binary Payload
+                <Download className="h-3.5 w-3.5" />
+                <span>Download Binary Payload</span>
               </button>
             </div>
           )}

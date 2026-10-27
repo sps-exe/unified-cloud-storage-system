@@ -72,49 +72,49 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 animate-in fade-in duration-150">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <HardDrive className="h-5 w-5 text-indigo-400" />
-              <span>Connected Google Drive Accounts</span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
+            <h2 className="text-base font-semibold text-zinc-100 flex items-center gap-2">
+              <HardDrive className="h-4 w-4 text-zinc-400" />
+              <span>Connected Drive Accounts</span>
+              <span className="text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono">
                 {accounts.length} Active
               </span>
             </h2>
-            <p className="text-xs text-slate-400 mt-1">
-              Each connected account contributes its available Google Drive storage to your unified virtual filesystem.
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Each connected account contributes its Google Drive quota to the unified virtual storage pool.
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Message Banner */}
         {message && (
-          <div className="px-6 py-3 bg-emerald-500/10 border-b border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2">
+          <div className="px-6 py-2.5 bg-emerald-500/10 border-b border-emerald-500/20 text-emerald-400 text-xs font-mono flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
             <span>{message}</span>
           </div>
         )}
 
         {/* Action Controls */}
-        <div className="p-4 bg-slate-950/40 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+        <div className="px-6 py-3 bg-zinc-950/60 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3">
           <button
             onClick={handleConnectLive}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/25 transition disabled:opacity-50"
+            className="flex items-center gap-2 px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-medium transition disabled:opacity-50"
           >
             {loading ? (
-              <RefreshCw className="h-4 w-4 animate-spin" />
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3.5 w-3.5" />
             )}
             <span>{loading ? 'Connecting to Google...' : 'Connect Google Drive Account'}</span>
           </button>
@@ -122,7 +122,7 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
           <button
             onClick={onRefresh}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-zinc-800 transition"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh Status</span>
@@ -130,10 +130,10 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
         </div>
 
         {/* Accounts Grid */}
-        <div className="p-6 overflow-y-auto space-y-3">
+        <div className="p-6 overflow-y-auto space-y-2.5">
           {accounts.length === 0 ? (
-            <div className="text-center py-12 text-slate-500 text-sm">
-              No Google Drive accounts connected yet. Click "+ Connect Google Drive Account" above to link your first account.
+            <div className="text-center py-12 text-zinc-500 text-xs font-mono">
+              No Google Drive accounts connected. Connect an account to initialize storage pooling.
             </div>
           ) : (
             accounts.map((acc, index) => {
@@ -145,18 +145,18 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
               return (
                 <div
                   key={acc.id}
-                  className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-slate-700/80 transition"
+                  className="bg-zinc-950 border border-zinc-800/80 rounded-lg p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-zinc-700 transition"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="h-10 w-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-300 font-mono text-xs font-bold shrink-0">
+                    <div className="h-8 w-8 rounded-md bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 font-mono text-xs font-semibold shrink-0">
                       #{String(index + 1).padStart(2, '0')}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-white text-sm truncate" title={acc.googleEmail}>
+                        <span className="font-mono text-xs text-zinc-200 truncate" title={acc.googleEmail}>
                           {acc.googleEmail}
                         </span>
-                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                        <span className={`text-[10px] font-mono font-medium px-1.5 py-0.5 rounded ${
                           acc.status === 'ACTIVE'
                             ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                             : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
@@ -164,13 +164,13 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
                           {acc.status}
                         </span>
                       </div>
-                      <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-3">
-                        <span>Used: <strong className="text-slate-200">{formatBytes(acc.quotaUsedBytes)}</strong></span>
-                        <span>•</span>
-                        <span>Capacity: <strong className="text-slate-200">{formatBytes(acc.quotaLimitBytes)}</strong></span>
+                      <div className="text-[11px] text-zinc-400 mt-1 flex items-center gap-2.5 font-mono tabular-nums">
+                        <span>Used: <strong className="text-zinc-200 font-medium">{formatBytes(acc.quotaUsedBytes)}</strong></span>
+                        <span className="text-zinc-600">•</span>
+                        <span>Capacity: <strong className="text-zinc-200 font-medium">{formatBytes(acc.quotaLimitBytes)}</strong></span>
                         {reserved > 0 && (
                           <>
-                            <span>•</span>
+                            <span className="text-zinc-600">•</span>
                             <span className="text-amber-400 font-medium">Reserved: {formatBytes(acc.reservedBytes)}</span>
                           </>
                         )}
@@ -180,15 +180,17 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
 
                   {/* Meter & Actions */}
                   <div className="flex items-center gap-4">
-                    <div className="w-36 hidden sm:block">
-                      <div className="flex justify-between text-[10px] text-slate-400 mb-1">
-                        <span>Headroom</span>
+                    <div className="w-32 hidden sm:block">
+                      <div className="flex justify-between text-[10px] text-zinc-400 font-mono tabular-nums mb-1">
+                        <span>Used</span>
                         <span>{usedPct.toFixed(1)}%</span>
                       </div>
-                      <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                      <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
                         <div
                           style={{ width: `${usedPct}%` }}
-                          className="h-full bg-indigo-500 rounded-full"
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            usedPct > 90 ? 'bg-rose-500' : usedPct > 70 ? 'bg-amber-400' : 'bg-emerald-500'
+                          }`}
                         />
                       </div>
                     </div>
@@ -197,18 +199,18 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
                       <button
                         onClick={() => handleSyncAccount(acc.id)}
                         disabled={loading}
-                        className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                        className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition"
                         title="Sync Quota with Google Drive"
                       >
-                        <RefreshCw className="h-4 w-4" />
+                        <RefreshCw className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => handleDisconnect(acc.id, acc.googleEmail)}
                         disabled={loading}
-                        className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+                        className="p-1.5 rounded-md text-zinc-400 hover:text-rose-400 hover:bg-zinc-800 transition"
                         title="Disconnect Account"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </div>

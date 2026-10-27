@@ -164,20 +164,20 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 animate-in fade-in duration-150">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <UploadCloud className="h-5 w-5 text-indigo-400" />
-            <h2 className="text-lg font-bold text-white">Upload File to Unified Storage</h2>
+            <UploadCloud className="h-4 w-4 text-zinc-400" />
+            <h2 className="text-sm font-semibold text-zinc-100">Upload to Virtual Storage</h2>
           </div>
           <button
             onClick={onClose}
             disabled={isUploading}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
@@ -190,10 +190,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition ${
+              className={`border border-dashed rounded-lg p-7 text-center cursor-pointer transition ${
                 dragOver
-                  ? 'border-indigo-500 bg-indigo-500/10'
-                  : 'border-slate-700 hover:border-slate-600 bg-slate-950/40'
+                  ? 'border-zinc-400 bg-zinc-800/40'
+                  : 'border-zinc-800 hover:border-zinc-700 bg-zinc-950/60'
               }`}
             >
               <input
@@ -202,31 +202,31 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                 className="hidden"
                 onChange={handleFileChange}
               />
-              <UploadCloud className="h-10 w-10 text-indigo-400 mx-auto mb-3" />
-              <p className="text-sm font-semibold text-slate-200">
+              <UploadCloud className="h-8 w-8 text-zinc-400 mx-auto mb-2.5" />
+              <p className="text-xs font-medium text-zinc-200">
                 Drag & drop a file here, or click to browse
               </p>
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-[11px] text-zinc-500 mt-1 font-mono">
                 Supports all file types up to 100 MB per file
               </p>
             </div>
           ) : (
-            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 flex items-center justify-between">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="h-10 w-10 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
-                  <File className="h-5 w-5" />
+                <div className="h-8 w-8 rounded-md bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">
+                  <File className="h-4 w-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-white truncate">{selectedFile.name}</p>
-                  <p className="text-xs text-slate-400">{formatBytes(selectedFile.size)}</p>
+                  <p className="text-xs font-medium text-zinc-200 truncate">{selectedFile.name}</p>
+                  <p className="text-[11px] text-zinc-400 font-mono tabular-nums">{formatBytes(selectedFile.size)}</p>
                 </div>
               </div>
               <button
                 onClick={() => { setSelectedFile(null); setDisplayName(''); }}
                 disabled={isUploading}
-                className="p-1 rounded text-slate-400 hover:text-rose-400 transition"
+                className="p-1 rounded text-zinc-400 hover:text-rose-400 transition"
               >
-                <X className="h-4 w-4" />
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           )}
@@ -234,7 +234,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           {/* Display Name Input */}
           {selectedFile && (
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
+              <label className="block text-xs font-medium text-zinc-400 mb-1">
                 Display Name (Optional)
               </label>
               <input
@@ -243,7 +243,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                 onChange={(e) => setDisplayName(e.target.value)}
                 disabled={isUploading}
                 placeholder={selectedFile.name}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-md text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 font-mono"
               />
             </div>
           )}
@@ -251,12 +251,12 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           {/* Destination Google Drive Account Selection */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs">
-              <label className="font-medium text-slate-300 flex items-center gap-1.5">
-                <HardDrive className="h-3.5 w-3.5 text-indigo-400" />
-                <span>Target Google Account</span>
+              <label className="font-medium text-zinc-400 flex items-center gap-1.5">
+                <HardDrive className="h-3.5 w-3.5 text-zinc-400" />
+                <span>Target Google Drive Account</span>
               </label>
-              <span className="text-[11px] text-slate-500">
-                {selectedAccountId === 'auto' ? '⚡ Auto-Load Balanced' : 'Direct Selection'}
+              <span className="text-[11px] text-zinc-500 font-mono">
+                {selectedAccountId === 'auto' ? 'Dynamic Load-Balanced' : 'Direct Selection'}
               </span>
             </div>
 
@@ -264,10 +264,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({
               value={selectedAccountId}
               onChange={(e) => setSelectedAccountId(e.target.value)}
               disabled={isUploading || activeAccounts.length === 0}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+              className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-md text-xs text-zinc-200 focus:outline-none focus:border-zinc-600 font-mono"
             >
               <option value="auto">
-                ⚡ Auto-Select (Highest Headroom: {bestAccount ? bestAccount.googleEmail : 'None'})
+                Auto-Select (Highest Headroom: {bestAccount ? bestAccount.googleEmail : 'None'})
               </option>
               {activeAccounts.map((acc) => (
                 <option key={acc.id} value={acc.id}>
@@ -277,35 +277,35 @@ export const UploadModal: React.FC<UploadModalProps> = ({
             </select>
 
             {targetAccount ? (
-              <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg p-2.5 flex items-center justify-between text-xs">
-                <span className="text-slate-400 truncate max-w-[240px]">
-                  Routing to: <strong className="text-slate-200 font-mono">{targetAccount.googleEmail}</strong>
+              <div className="bg-zinc-950 border border-zinc-800/80 rounded-md p-2.5 flex items-center justify-between text-xs">
+                <span className="text-zinc-400 truncate max-w-[240px] font-mono text-[11px]">
+                  Routing to: <strong className="text-zinc-200">{targetAccount.googleEmail}</strong>
                 </span>
-                <span className="text-emerald-400 font-mono text-[11px] shrink-0">
+                <span className="text-emerald-400 font-mono tabular-nums text-[11px] shrink-0">
                   {formatBytes(targetAccount.quotaAvailableBytes)} headroom
                 </span>
               </div>
             ) : (
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-center gap-2 text-xs text-amber-400">
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-md p-2.5 flex items-center gap-2 text-xs text-amber-400">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>No active Google Drive accounts connected. Connect an account first.</span>
               </div>
             )}
 
-            <p className="text-[11px] text-slate-500 flex items-center gap-1 pt-0.5">
+            <p className="text-[11px] text-zinc-500 flex items-center gap-1.5 pt-0.5 font-mono">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block shrink-0" />
               <span>500 MB safety margin enforced per account to prevent hard quota boundary errors.</span>
             </p>
           </div>
 
           {/* Zero-Knowledge Client-Side Encryption Toggle */}
-          <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl space-y-2.5">
+          <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Lock className="h-4 w-4 text-amber-400" />
                 <div>
-                  <span className="text-xs font-semibold text-slate-200 block">Zero-Knowledge Vault</span>
-                  <span className="text-[10px] text-slate-500">Encrypt with client-side AES-256-GCM before upload</span>
+                  <span className="text-xs font-medium text-zinc-200 block">Zero-Knowledge Vault</span>
+                  <span className="text-[10px] text-zinc-500 font-mono">Encrypt with client-side AES-256-GCM before upload</span>
                 </div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -316,24 +316,24 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                   disabled={isUploading}
                   className="sr-only peer"
                 />
-                <div className="w-8 h-4 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-amber-500"></div>
+                <div className="w-8 h-4 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-700 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-amber-500"></div>
               </label>
             </div>
 
             {encryptVault && (
-              <div className="space-y-1.5 pt-1 border-t border-slate-800/80">
-                <label className="text-[11px] text-slate-400 block font-medium">
+              <div className="space-y-1.5 pt-2 border-t border-zinc-800/80">
+                <label className="text-[11px] text-zinc-400 block font-mono">
                   Master Passphrase (NEVER sent to backend or Google)
                 </label>
                 <div className="relative">
-                  <Key className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
+                  <Key className="absolute left-2.5 top-2 h-3.5 w-3.5 text-zinc-500" />
                   <input
                     type="password"
                     value={vaultPassphrase}
                     onChange={(e) => setVaultPassphrase(e.target.value)}
                     placeholder="Enter strong encryption passphrase"
                     disabled={isUploading}
-                    className="w-full pl-8 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 font-mono"
+                    className="w-full pl-8 pr-3 py-1 bg-zinc-900 border border-zinc-800 rounded-md text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 font-mono"
                     required={encryptVault}
                   />
                 </div>
@@ -343,15 +343,15 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
           {/* Progress bar */}
           {isUploading && (
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs text-slate-400">
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs text-zinc-400 font-mono tabular-nums">
                 <span>Streaming upload to Google Drive...</span>
                 <span>{uploadProgress}%</span>
               </div>
-              <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+              <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
                 <div
                   style={{ width: `${uploadProgress}%` }}
-                  className="h-full bg-indigo-500 transition-all duration-300"
+                  className="h-full bg-emerald-500 transition-all duration-300"
                 />
               </div>
             </div>
@@ -359,7 +359,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
           {/* Error Message */}
           {error && (
-            <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-400 flex items-center gap-2">
+            <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-md text-xs text-rose-400 flex items-center gap-2">
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -367,22 +367,22 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-6 bg-slate-950/60 border-t border-slate-800 flex items-center justify-end gap-3">
+        <div className="px-6 py-3.5 bg-zinc-950/60 border-t border-zinc-800 flex items-center justify-end gap-2.5">
           <button
             onClick={onClose}
             disabled={isUploading}
-            className="px-4 py-2 text-xs font-medium rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            className="px-3.5 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-md transition"
           >
             Cancel
           </button>
           <button
             onClick={handleUpload}
             disabled={!selectedFile || isUploading || !bestAccount}
-            className="px-4 py-2 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white shadow-lg shadow-indigo-600/20 transition flex items-center gap-2"
+            className="px-4 py-1.5 text-xs font-medium rounded-md bg-zinc-100 hover:bg-white disabled:opacity-50 text-zinc-950 transition flex items-center gap-2"
           >
             {isUploading ? (
               <>
-                <span className="h-3 w-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span className="h-3 w-3 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full animate-spin" />
                 <span>Uploading...</span>
               </>
             ) : (

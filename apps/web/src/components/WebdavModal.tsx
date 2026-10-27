@@ -28,39 +28,39 @@ export const WebdavModal: React.FC<WebdavModalProps> = ({ isOpen, onClose, userE
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 animate-in fade-in duration-150">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
+        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/60">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
-              <Folder className="h-5 w-5" />
+            <div className="p-2 rounded-lg bg-zinc-800 border border-zinc-700/80 text-zinc-300">
+              <Folder className="h-4 w-4" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
                 <span>Mount Native Network Drive</span>
-                <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-full">
+                <span className="px-1.5 py-0.5 text-[10px] font-mono bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded">
                   RFC 4918 WebDAV
                 </span>
               </h3>
-              <p className="text-xs text-slate-400">
-                Access your aggregated Google Drive fabric directly in Finder or Explorer
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Mount the aggregated Google Drive fabric directly in macOS Finder or Windows Explorer
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-5 overflow-auto max-h-[80vh]">
+        <div className="p-6 space-y-4 overflow-auto max-h-[80vh]">
           {/* Server Endpoint Bar */}
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">
+            <label className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider block">
               Network Drive Server URL
             </label>
             <div className="flex items-center gap-2">
@@ -68,57 +68,57 @@ export const WebdavModal: React.FC<WebdavModalProps> = ({ isOpen, onClose, userE
                 type="text"
                 readOnly
                 value={webdavUrl}
-                className="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-indigo-300 focus:outline-none"
+                className="flex-1 px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-md text-xs font-mono text-zinc-200 focus:outline-none"
               />
               <button
                 onClick={copyUrl}
-                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-lg transition flex items-center gap-1.5 shrink-0"
+                className="px-3 py-1.5 bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-medium rounded-md transition flex items-center gap-1.5 shrink-0"
               >
-                {copiedUrl ? <Check className="h-3.5 w-3.5 text-emerald-300" /> : <Copy className="h-3.5 w-3.5" />}
+                {copiedUrl ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
                 <span>{copiedUrl ? 'Copied' : 'Copy URL'}</span>
               </button>
             </div>
           </div>
 
           {/* Platform Guides */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
             {/* macOS Finder */}
-            <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
-              <div className="flex items-center gap-2 text-white font-semibold text-xs">
-                <span className="h-2 w-2 rounded-full bg-indigo-400"></span>
+            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-2.5">
+              <div className="flex items-center gap-2 text-zinc-200 font-medium text-xs">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
                 <span>macOS Finder Setup</span>
               </div>
-              <ol className="text-xs text-slate-300 space-y-2 list-decimal list-inside pl-1 leading-relaxed">
+              <ol className="text-xs text-zinc-400 space-y-1.5 list-decimal list-inside pl-1 leading-relaxed font-sans">
                 <li>
-                  Open <strong className="text-white">Finder</strong> and press <kbd className="px-1.5 py-0.5 bg-slate-800 rounded font-mono text-[10px] text-indigo-300">⌘ Cmd + K</kbd> (or <em className="text-slate-400">Go &gt; Connect to Server</em>).
+                  Open <strong className="text-zinc-200">Finder</strong> and press <kbd className="px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded font-mono text-[10px] text-zinc-200">⌘ Cmd + K</kbd> (or <em className="text-zinc-400 not-italic font-mono">Go &gt; Connect to Server</em>).
                 </li>
                 <li>
-                  Paste the <strong className="text-indigo-400">Server URL</strong> above and click <strong className="text-white">Connect</strong>.
+                  Paste the <strong className="text-zinc-200">Server URL</strong> above and click <strong className="text-zinc-200">Connect</strong>.
                 </li>
                 <li>
-                  Select <strong className="text-white">Registered User</strong>, enter your UCSS Email (<code className="text-slate-400 font-mono text-[11px]">{userEmail}</code>) and your password.
+                  Select <strong className="text-zinc-200">Registered User</strong>, enter your UCSS Email (<code className="text-zinc-300 font-mono text-[11px]">{userEmail}</code>) and your password.
                 </li>
                 <li>
-                  Drag and drop files to upload directly to your multi-account pool!
+                  Drag and drop files to upload directly to your multi-account pool.
                 </li>
               </ol>
             </div>
 
             {/* Windows File Explorer */}
-            <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
-              <div className="flex items-center gap-2 text-white font-semibold text-xs">
-                <span className="h-2 w-2 rounded-full bg-sky-400"></span>
+            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-2.5">
+              <div className="flex items-center gap-2 text-zinc-200 font-medium text-xs">
+                <span className="h-1.5 w-1.5 rounded-full bg-zinc-400"></span>
                 <span>Windows Explorer Setup</span>
               </div>
-              <ol className="text-xs text-slate-300 space-y-2 list-decimal list-inside pl-1 leading-relaxed">
+              <ol className="text-xs text-zinc-400 space-y-1.5 list-decimal list-inside pl-1 leading-relaxed font-sans">
                 <li>
-                  Open <strong className="text-white">File Explorer</strong>, right-click <strong className="text-white">This PC</strong>, and choose <strong className="text-white">Map network drive...</strong>
+                  Open <strong className="text-zinc-200">File Explorer</strong>, right-click <strong className="text-zinc-200">This PC</strong>, and choose <strong className="text-zinc-200">Map network drive...</strong>
                 </li>
                 <li>
-                  Paste the <strong className="text-sky-400">Server URL</strong> into the <strong className="text-white">Folder</strong> field.
+                  Paste the <strong className="text-zinc-200">Server URL</strong> into the <strong className="text-zinc-200">Folder</strong> field.
                 </li>
                 <li>
-                  Check <strong className="text-white">Connect using different credentials</strong> and click <strong className="text-white">Finish</strong>.
+                  Check <strong className="text-zinc-200">Connect using different credentials</strong> and click <strong className="text-zinc-200">Finish</strong>.
                 </li>
                 <li>
                   Sign in with your UCSS account credentials.
@@ -128,26 +128,26 @@ export const WebdavModal: React.FC<WebdavModalProps> = ({ isOpen, onClose, userE
           </div>
 
           {/* Linux & CLI Mounting */}
-          <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-2">
-            <div className="flex items-center gap-2 text-white font-semibold text-xs">
-              <Terminal className="h-4 w-4 text-emerald-400" />
+          <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3.5 space-y-1.5">
+            <div className="flex items-center gap-2 text-zinc-200 font-medium text-xs">
+              <Terminal className="h-3.5 w-3.5 text-zinc-400" />
               <span>Linux / CLI (davfs2)</span>
             </div>
-            <pre className="p-2.5 bg-slate-900 rounded-lg text-[11px] font-mono text-emerald-400 overflow-x-auto">
+            <pre className="p-2.5 bg-zinc-900 border border-zinc-800 rounded-md text-[11px] font-mono text-zinc-300 overflow-x-auto">
               sudo mount -t davfs {webdavUrl} /mnt/ucss -o username={userEmail}
             </pre>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3.5 bg-slate-950/60 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-          <div className="flex items-center gap-1.5">
-            <HardDrive className="h-3.5 w-3.5 text-indigo-400" />
+        <div className="px-6 py-3 bg-zinc-950/60 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-500">
+          <div className="flex items-center gap-1.5 font-mono text-[11px]">
+            <HardDrive className="h-3.5 w-3.5 text-zinc-400" />
             <span>Streams transparently across all connected Drive accounts</span>
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition"
+            className="px-3.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs rounded-md transition"
           >
             Close
           </button>
