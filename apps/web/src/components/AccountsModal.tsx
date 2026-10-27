@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, HardDrive, RefreshCw, Plus, Trash2, CheckCircle2 } from './icons';
 import { api, formatBytes } from '../lib/api';
+import { useToast } from './Toast';
 import type { DriveAccountDto } from '@ucss/shared';
 
 interface AccountsModalProps {
@@ -16,6 +17,7 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
   accounts,
   onRefresh,
 }) => {
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -25,11 +27,12 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
     setLoading(true);
     try {
       await api.request(`/api/accounts/${accountId}/sync`, { method: 'POST' });
+      toast.success('Storage quota synchronized with Google Drive');
       setMessage('Storage quota synchronized successfully with Google Drive.');
       setTimeout(() => setMessage(null), 4000);
       onRefresh();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Sync failed');
+      toast.error(err instanceof Error ? err.message : 'Sync failed');
     } finally {
       setLoading(false);
     }
@@ -42,9 +45,10 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
     setLoading(true);
     try {
       await api.request(`/api/accounts/${accountId}`, { method: 'DELETE' });
+      toast.success(`Disconnected ${email}`);
       onRefresh();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Disconnect failed');
+      toast.error(err instanceof Error ? err.message : 'Disconnect failed');
     } finally {
       setLoading(false);
     }
@@ -58,10 +62,10 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
       if (targetUrl) {
         window.location.href = targetUrl;
       } else {
-        alert('Could not retrieve Google authorization URL. Please try again.');
+        toast.error('Could not retrieve Google authorization URL. Please try again.');
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to generate OAuth URL');
+      toast.error(err instanceof Error ? err.message : 'Failed to generate OAuth URL');
     } finally {
       setLoading(false);
     }

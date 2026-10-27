@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, UploadCloud, File, AlertCircle, HardDrive, Lock, Key } from './icons';
 import { api, formatBytes, resolveUrl } from '../lib/api';
 import { encryptFileClientSide } from '../lib/zk-crypto';
+import { useToast } from './Toast';
 import type { DriveAccountDto } from '@ucss/shared';
 
 interface UploadModalProps {
@@ -9,6 +10,7 @@ interface UploadModalProps {
   onClose: () => void;
   accounts: DriveAccountDto[];
   onUploadComplete: () => void;
+  initialFile?: File | null;
 }
 
 export const UploadModal: React.FC<UploadModalProps> = ({
@@ -16,7 +18,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   onClose,
   accounts,
   onUploadComplete,
+  initialFile = null,
 }) => {
+  const toast = useToast();
   const [dragOver, setDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [displayName, setDisplayName] = useState('');
@@ -27,6 +31,14 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [encryptVault, setEncryptVault] = useState(false);
   const [vaultPassphrase, setVaultPassphrase] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (initialFile) {
+      setSelectedFile(initialFile);
+      setDisplayName(initialFile.name);
+      setError(null);
+    }
+  }, [initialFile]);
 
   if (!isOpen) return null;
 
@@ -136,13 +148,16 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       }
 
       setUploadProgress(100);
+      toast.success(`Uploaded "${finalDisplayName}" successfully!`);
       setTimeout(() => {
         setIsUploading(false);
         onUploadComplete();
         onClose();
-      }, 500);
+      }, 400);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      const errMsg = err instanceof Error ? err.message : 'Upload failed';
+      setError(errMsg);
+      toast.error(errMsg);
       setIsUploading(false);
       setUploadProgress(0);
     }

@@ -12,9 +12,11 @@ for sig in [getattr(signal, 'SIGTTIN', None), getattr(signal, 'SIGTTOU', None), 
 WEB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../apps/web"))
 VITE_JS = os.path.abspath(os.path.join(os.path.dirname(__file__), "../apps/web/node_modules/vite/bin/vite.js"))
 
+NODE_BIN = "node"
+
 print("Building production Vite bundle...")
 res_vite = subprocess.run(
-    ["node", VITE_JS, "build"],
+    [NODE_BIN, VITE_JS, "build"],
     cwd=WEB_DIR,
     stdin=subprocess.DEVNULL,
     start_new_session=True

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from './lib/api';
+import { ToastProvider } from './components/Toast';
 import { Navbar } from './components/Navbar';
 import { StorageOverview } from './components/StorageOverview';
 import { FileManager } from './components/FileManager';
@@ -10,7 +11,7 @@ import { WebdavModal } from './components/WebdavModal';
 import { AuthModal } from './components/AuthModal';
 import type { FileDto, DriveAccountDto, PaginationMeta } from '@ucss/shared';
 
-export function App() {
+function DashboardApp() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [userEmail, setUserEmail] = useState('');
   
@@ -24,6 +25,7 @@ export function App() {
   // Lists state
   const [accounts, setAccounts] = useState<DriveAccountDto[]>([]);
   const [files, setFiles] = useState<FileDto[]>([]);
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [meta, setMeta] = useState<PaginationMeta>({
     page: 1,
     pageSize: 20,
@@ -43,6 +45,7 @@ export function App() {
   const [isAccountsOpen, setIsAccountsOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [isWebdavOpen, setIsWebdavOpen] = useState(false);
 
   // 1. Fetch user profile and unified storage stats
@@ -75,8 +78,7 @@ export function App() {
       } else {
         setIsAuthenticated(false);
       }
-    } catch (err) {
-      console.warn('Session verification failed:', err);
+    } catch {
       setIsAuthenticated(false);
     }
   }, []);
@@ -88,13 +90,14 @@ export function App() {
       if (res.ok) {
         setAccounts(res.data);
       }
-    } catch (err) {
-      console.error('Failed to fetch accounts:', err);
+    } catch {
+      // Silently fall back to empty accounts
     }
   }, []);
 
   // 3. Fetch files list with filters
   const fetchFiles = useCallback(async () => {
+    setIsLoadingFiles(true);
     try {
       const params = new URLSearchParams({
         page: page.toString(),
@@ -111,8 +114,10 @@ export function App() {
         setFiles(res.data);
         if (res.meta) setMeta(res.meta);
       }
-    } catch (err) {
-      console.error('Failed to fetch files:', err);
+    } catch {
+      // Silently keep existing files
+    } finally {
+      setIsLoadingFiles(false);
     }
   }, [page, search, selectedAccount, selectedMime, sortBy, sortOrder]);
 
@@ -148,6 +153,11 @@ export function App() {
       api.setRefreshToken(null);
       setIsAuthenticated(false);
     }
+  };
+
+  const handleOpenUploadWithFile = (file?: File) => {
+    setUploadFile(file || null);
+    setIsUploadOpen(true);
   };
 
   if (isAuthenticated === null) {
@@ -186,7 +196,7 @@ export function App() {
       />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Storage Pool Overview Bar & Metric Cards */}
         <StorageOverview
           totalQuotaBytes={totalQuotaBytes}
@@ -195,6 +205,7 @@ export function App() {
           totalReservedBytes={totalReservedBytes}
           activeAccountsCount={activeAccountsCount}
           totalAccountsCount={accounts.length}
+          onOpenAccounts={() => setIsAccountsOpen(true)}
         />
 
         {/* Unified File Explorer */}
@@ -213,8 +224,10 @@ export function App() {
           onSortChange={(sb, so) => { setSortBy(sb); setSortOrder(so); setPage(1); }}
           page={page}
           onPageChange={setPage}
-          onOpenUpload={() => setIsUploadOpen(true)}
+          onOpenUpload={handleOpenUploadWithFile}
+          onOpenAccounts={() => setIsAccountsOpen(true)}
           onRefresh={refreshAll}
+          isLoading={isLoadingFiles}
         />
       </main>
 
@@ -228,8 +241,12 @@ export function App() {
 
       <UploadModal
         isOpen={isUploadOpen}
-        onClose={() => setIsUploadOpen(false)}
+        onClose={() => {
+          setIsUploadOpen(false);
+          setUploadFile(null);
+        }}
         accounts={accounts}
+        initialFile={uploadFile}
         onUploadComplete={refreshAll}
       />
 
@@ -250,5 +267,13 @@ export function App() {
         <p>Unified Cloud Storage System (UCSS) • PostgreSQL-First Multi-Drive Orchestrator</p>
       </footer>
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <ToastProvider>
+      <DashboardApp />
+    </ToastProvider>
   );
 }

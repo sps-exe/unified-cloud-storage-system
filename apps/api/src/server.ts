@@ -8,26 +8,18 @@ import { logger } from './lib/logger.js';
 import { prisma } from '@ucss/database';
 
 async function main() {
-  console.log('[STARTUP] Starting server main()...');
   // Verify database connection before accepting traffic
   try {
-    console.log('[STARTUP] Verifying database connection...');
     await prisma.$queryRaw`SELECT 1`;
-    console.log('[STARTUP] Database connection verified.');
     logger.info('✅ Database connection verified');
   } catch (error) {
-    console.error('[STARTUP] Failed to connect to database:', error);
     logger.fatal({ error }, '❌ Failed to connect to database. Exiting.');
     process.exit(1);
   }
 
-  console.log('[STARTUP] Calling createApp()...');
   const app = createApp();
-  console.log('[STARTUP] createApp() completed.');
 
-  console.log('[STARTUP] Calling app.listen()...');
   const server = app.listen(env.PORT, '0.0.0.0', () => {
-    console.log(`[STARTUP] 🚀 Server successfully listening on port ${env.PORT}`);
     logger.info(
       {
         port: env.PORT,
