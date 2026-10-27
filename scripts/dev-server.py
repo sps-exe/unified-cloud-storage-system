@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import os
+import shutil
 import signal
 import subprocess
 import time
@@ -9,12 +10,13 @@ import json
 
 PID_FILE = "/tmp/ucss_api.pid"
 LOG_FILE = "/tmp/ucss_api.log"
-API_DIR = "/Users/sps/Desktop/DATABASE UNLIMITED/ucss/apps/api"
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+API_DIR = os.path.join(REPO_ROOT, "apps/api")
 PORT = 4000
 
-NODE_BIN = "/usr/local/bin/node" if os.path.exists("/usr/local/bin/node") else "node"
-NATIVE_ESBUILD = "/Users/sps/Desktop/DATABASE UNLIMITED/ucss/node_modules/.pnpm/@esbuild+darwin-arm64@0.25.12/node_modules/@esbuild/darwin-arm64/bin/esbuild"
-ESBUILD_BIN = NATIVE_ESBUILD if os.path.exists(NATIVE_ESBUILD) else "../../node_modules/.bin/esbuild"
+NODE_BIN = shutil.which("node") or "node"
+LOCAL_ESBUILD = os.path.join(REPO_ROOT, "node_modules/.bin/esbuild")
+ESBUILD_BIN = LOCAL_ESBUILD if os.path.exists(LOCAL_ESBUILD) else (shutil.which("esbuild") or "esbuild")
 
 def get_pid():
     if os.path.exists(PID_FILE):

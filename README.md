@@ -135,12 +135,14 @@ cd unified-cloud-storage-system
 # 2. Install dependencies & configure environment
 pnpm install
 cp .env.example .env
+# (To connect your own Google accounts, see: docs/google-oauth-setup.md)
 
 # 3. Apply database migrations & start development services
 pnpm db:migrate
 pnpm start
 ```
 *Frontend & API are live at `http://localhost:4000`.*
+*For setting up Google Drive credentials, see the [Google Cloud OAuth Setup Guide](docs/google-oauth-setup.md).*
 
 ---
 

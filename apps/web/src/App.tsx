@@ -45,7 +45,7 @@ function DashboardApp() {
   const [isAccountsOpen, setIsAccountsOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[] | null>(null);
   const [isWebdavOpen, setIsWebdavOpen] = useState(false);
 
   // 1. Fetch user profile and unified storage stats
@@ -155,8 +155,8 @@ function DashboardApp() {
     }
   };
 
-  const handleOpenUploadWithFile = (file?: File) => {
-    setUploadFile(file || null);
+  const handleOpenUploadWithFiles = (files?: File[]) => {
+    setUploadFiles(files || null);
     setIsUploadOpen(true);
   };
 
@@ -225,7 +225,7 @@ function DashboardApp() {
           onSortChange={(sb, so) => { setSortBy(sb); setSortOrder(so); setPage(1); }}
           page={page}
           onPageChange={setPage}
-          onOpenUpload={handleOpenUploadWithFile}
+          onOpenUpload={handleOpenUploadWithFiles}
           onOpenAccounts={() => setIsAccountsOpen(true)}
           onRefresh={refreshAll}
           isLoading={isLoadingFiles}
@@ -244,10 +244,10 @@ function DashboardApp() {
         isOpen={isUploadOpen}
         onClose={() => {
           setIsUploadOpen(false);
-          setUploadFile(null);
+          setUploadFiles(null);
         }}
         accounts={accounts}
-        initialFile={uploadFile}
+        initialFiles={uploadFiles}
         onUploadComplete={refreshAll}
       />
 

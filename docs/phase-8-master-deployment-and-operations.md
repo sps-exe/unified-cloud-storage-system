@@ -76,7 +76,7 @@ You now have a fully operational, portfolio-grade system running locally. Below 
 6. Copy your **Client ID** and **Client Secret**.
 
 ### Step 3.2: Configure Environment Variables
-Open `/Users/sps/Desktop/DATABASE UNLIMITED/ucss/apps/api/.env` and update the three Google credentials:
+Open `apps/api/.env` and update the three Google credentials:
 ```env
 GOOGLE_CLIENT_ID="your-client-id-here.apps.googleusercontent.com"
 GOOGLE_CLIENT_SECRET="your-client-secret-here"

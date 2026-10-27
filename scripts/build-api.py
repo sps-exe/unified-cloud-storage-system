@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 import os
+import shutil
 import subprocess
 import sys
 
-API_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../apps/api"))
-ESBUILD_BIN = "/Users/sps/Desktop/DATABASE UNLIMITED/ucss/node_modules/.pnpm/@esbuild+darwin-arm64@0.25.12/node_modules/@esbuild/darwin-arm64/bin/esbuild"
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+API_DIR = os.path.join(REPO_ROOT, "apps/api")
+
+# Dynamically locate esbuild binary
+LOCAL_ESBUILD = os.path.join(REPO_ROOT, "node_modules/.bin/esbuild")
+ESBUILD_BIN = LOCAL_ESBUILD if os.path.exists(LOCAL_ESBUILD) else (shutil.which("esbuild") or "esbuild")
 
 cmd = [
     ESBUILD_BIN,
@@ -22,6 +27,6 @@ cmd = [
 ]
 
 print("Running esbuild...")
-res = subprocess.run(cmd, cwd=API_DIR, stdin=subprocess.DEVNULL, start_new_session=True)
+res = subprocess.run(cmd, cwd=API_DIR, stdin=subprocess.DEVNULL)
 print("Build finished with code:", res.returncode)
 sys.exit(res.returncode)

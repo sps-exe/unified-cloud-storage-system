@@ -22,6 +22,7 @@ import {
   UploadCloud,
 } from './icons';
 import { api, formatBytes, resolveUrl } from '../lib/api';
+import { extractFilesFromDataTransfer } from '../lib/file-tree';
 import { useToast } from './Toast';
 import { FilePreviewModal } from './FilePreviewModal';
 import type { FileDto, DriveAccountDto, PaginationMeta } from '@ucss/shared';
@@ -41,7 +42,7 @@ interface FileManagerProps {
   onSortChange: (sortBy: string, sortOrder: 'asc' | 'desc') => void;
   page: number;
   onPageChange: (newPage: number) => void;
-  onOpenUpload: (preselectedFile?: File) => void;
+  onOpenUpload: (preselectedFiles?: File[]) => void;
   onOpenAccounts?: () => void;
   onRefresh: () => void;
   isLoading?: boolean;
@@ -170,12 +171,19 @@ export const FileManager: React.FC<FileManagerProps> = ({
     setIsDragOver(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      onOpenUpload(e.dataTransfer.files[0]);
+    try {
+      const queued = await extractFilesFromDataTransfer(e.dataTransfer);
+      if (queued.length > 0) {
+        onOpenUpload(queued.map((q) => q.file));
+      }
+    } catch {
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        onOpenUpload(Array.from(e.dataTransfer.files));
+      }
     }
   };
 
