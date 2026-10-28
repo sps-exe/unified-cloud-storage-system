@@ -18,7 +18,7 @@
     }
   },
   "scripts": {
-    "build": "esbuild src/*.ts --outdir=dist --format=esm --packages=external",
+    "build": "esbuild src/*.ts --outdir=dist --format=esm --packages=external && tsc --emitDeclarationOnly",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
