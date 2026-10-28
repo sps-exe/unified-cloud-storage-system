@@ -2,7 +2,7 @@
   "name": "ucss",
   "version": "1.0.0",
   "private": true,
-  "description": "Unified Cloud Storage System — multi-account Google Drive file manager",
+  "description": "Unified Cloud Storage System — pool multiple Google Drive accounts into one self-hosted drive",
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
@@ -10,9 +10,11 @@
     "lint": "turbo run lint",
     "db:generate": "turbo run db:generate",
     "db:migrate": "turbo run db:migrate",
-    "db:seed": "turbo run db:seed",
     "db:studio": "pnpm --filter @ucss/database exec prisma studio",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "setup": "node scripts/setup.mjs",
+    "db:deploy": "pnpm --filter @ucss/database run db:deploy",
+    "start": "pnpm --filter @ucss/api run start"
   },
   "devDependencies": {
     "turbo": "^2.3.3",
@@ -25,5 +27,10 @@
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
   },
-  "packageManager": "pnpm@11.22.0"
+  "packageManager": "pnpm@11.22.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sps-exe/unified-cloud-storage-system.git"
+  },
+  "license": "MIT"
 }

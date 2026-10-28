@@ -1,64 +1,49 @@
-# Google Cloud OAuth 2.0 Setup Guide
+# Google OAuth setup
 
-This guide walks you through setting up Google Drive API credentials so you—or any other user/developer—can connect multiple Google Drive accounts to UCSS.
+UCSS links Drive accounts through *your own* Google Cloud OAuth client, so Google credentials never leave
+your server. This is a one-time, ~5 minute job per UCSS installation (not per user).
 
----
+## 1. Create the project and enable the API
+1. Open the [Google Cloud Console](https://console.cloud.google.com/) → project picker → **New project** (any name).
+2. **APIs & Services → Library** → search **Google Drive API** → **Enable**.
 
-## ⏱️ Quick Setup (Under 3 Minutes)
+## 2. Configure the consent screen
+1. **APIs & Services → OAuth consent screen** (or **Google Auth Platform** in the newer console).
+2. User type **External**. Fill in app name, support email, developer email.
+3. **Scopes**: add
+   - `https://www.googleapis.com/auth/drive.file` — UCSS can only see files it created itself (least privilege)
+   - `.../auth/userinfo.email` and `openid` — to show which Google account is linked
+4. **Publish the app** (Audience → *In production*). This matters:
 
-### Step 1: Create a Google Cloud Project
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2. Click the project dropdown at the top left → **New Project**.
-3. Name it `UCSS-Storage` (or any name) and click **Create**.
+   | Mode | What happens |
+   |------|--------------|
+   | *Testing* | Only listed test users can connect, **and Google expires their refresh tokens after 7 days** — linked accounts will flip to `TOKEN_EXPIRED` weekly. |
+   | *In production* | Tokens stay valid until revoked. These scopes are non-sensitive, so no Google verification review is required. |
 
-### Step 2: Enable the Google Drive API
-1. In the search bar at the top, search for **"Google Drive API"**.
-2. Click on **Google Drive API** and click the blue **Enable** button.
+## 3. Create the credentials
+1. **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application**.
+2. **Authorized redirect URIs** — must match your server's public URL exactly:
+   - Local: `http://localhost:4000/api/oauth/google/callback`
+   - Hosted: `https://your-domain.com/api/oauth/google/callback`
+3. Copy the **Client ID** and **Client secret**.
 
-### Step 3: Configure the OAuth Consent Screen
-1. In the left sidebar, navigate to **APIs & Services** → **OAuth consent screen**.
-2. Choose **External** user type and click **Create**.
-3. Fill in the required fields:
-   * **App name:** `Unified Cloud Storage System`
-   * **User support email:** Your email
-   * **Developer contact email:** Your email
-4. Click **Save and Continue**.
-5. On the **Scopes** page:
-   * Click **Add or Remove Scopes**.
-   * Add: `https://www.googleapis.com/auth/drive.file` (Narrow, least-privilege scope).
-   * Click **Save and Continue**.
-6. On the **Test users** page:
-   * **IMPORTANT FOR MULTI-USER ACCESS:**
-     If your app is in "Testing" mode, Google will block any Google account that is not listed under **Test users**.
-     Click **+ ADD USERS** and enter:
-     - Your personal Google emails
-     - Any friends, colleagues, or mentors testing the app
-   * *(Optional: Once ready for general public use, click "Publish App" on the OAuth consent screen to allow ANY Google account to connect without being added as a test user).*
-7. Click **Save and Continue**.
-
-### Step 4: Create OAuth 2.0 Credentials
-1. In the left sidebar, click **Credentials**.
-2. Click **+ CREATE CREDENTIALS** at the top → select **OAuth client ID**.
-3. Choose **Application type:** `Web application`.
-4. Set **Name:** `UCSS Web Client`.
-5. Under **Authorized redirect URIs**, click **+ ADD URI** and add:
-   ```
-   http://localhost:4000/api/oauth/google/callback
-   ```
-   *(If deploying to production, e.g. Vercel/Render, add your production domain: `https://your-domain.com/api/oauth/google/callback`)*.
-6. Click **Create**.
-7. Copy your **Client ID** and **Client Secret**.
-
----
-
-## 🔐 Step 5: Update Your Environment (`.env`)
-
-In your project root (or `apps/api/.env`), paste your credentials:
+## 4. Tell UCSS
+Put them in `.env` (next to `docker-compose.yml`) and restart:
 
 ```ini
-GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=GOCSPX-your-client-secret
-GOOGLE_REDIRECT_URI=http://localhost:4000/api/oauth/google/callback
+APP_URL=http://localhost:4000            # the same host you registered above
+GOOGLE_CLIENT_ID=1234-abc.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-...
+# GOOGLE_REDIRECT_URI is derived from APP_URL; set it only if you registered something different.
 ```
 
-Restart your server (`pnpm start`). You can now connect any number of Google Drive accounts seamlessly!
+```bash
+docker compose up -d --build     # or: pnpm start
+```
+
+Open the app → **Connect Google Drive Account**. Repeat for each Google account you want in the pool.
+
+## Troubleshooting
+- **`redirect_uri_mismatch`** — the URI in Google Cloud differs from `APP_URL` + `/api/oauth/google/callback` (scheme, port and trailing slash all count).
+- **Account shows `TOKEN_EXPIRED`** — the consent was revoked or the app is still in *Testing*. Click **Reconnect**.
+- **"No refresh token"** — remove UCSS at <https://myaccount.google.com/permissions> and connect again.

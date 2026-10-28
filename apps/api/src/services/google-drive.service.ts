@@ -26,18 +26,37 @@ export const DRIVE_SCOPES = [
   'openid',
 ];
 
+// Google omits `limit` for unlimited Workspace plans; assume the free-tier size so allocation stays conservative.
+const DEFAULT_QUOTA_BYTES = BigInt(15 * 1024 * 1024 * 1024);
+
 export const ROOT_FOLDER_NAME = '_UCSS_ROOT_';
 
 export function isTokenRevokedError(error: unknown): boolean {
   if (!error) return false;
+  if (error instanceof AppError && error.code === 'TOKEN_EXPIRED') return true;
   const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  return (
-    msg.includes('invalid_grant') ||
-    msg.includes('token has been expired or revoked') ||
-    msg.includes('unauthorized') ||
-    msg.includes('bad credentials')
-  );
+  return msg.includes('invalid_grant') || msg.includes('token has been expired or revoked');
 }
+
+/** Maps a raw Google error to TOKEN_EXPIRED (so callers can flag the account) or a generic 502. */
+function driveError(error: unknown, fallback: string): AppError {
+  if (isTokenRevokedError(error)) {
+    return new AppError(401, 'TOKEN_EXPIRED', 'Google Drive access was revoked or expired. Reconnect the account.');
+  }
+  const reason = error instanceof Error ? error.message.replace(/\s+/g, ' ').slice(0, 200) : '';
+  return new ExternalServiceError('Google Drive', reason ? `${fallback} (${reason})` : fallback);
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Google throttles bursts (esp. many small uploads); these are worth retrying with backoff. */
+function isTransientDriveError(error: unknown): boolean {
+  const code = Number((error as { code?: number | string })?.code);
+  const msg = (error instanceof Error ? error.message : '').toLowerCase();
+  return [429, 500, 502, 503, 504].includes(code) || msg.includes('rate limit') || msg.includes('econnreset') || msg.includes('socket hang up');
+}
+
+const rootFolderCache = new Map<string, string>();
 
 export interface OAuthCallbackResult {
   googleEmail: string;
@@ -53,6 +72,9 @@ export class GoogleDriveService {
    * Creates an OAuth2 client configured with application credentials.
    */
   static getOAuth2Client(): OAuth2Client {
+    if (!env.googleConfigured) {
+      throw new AppError(503, 'GOOGLE_NOT_CONFIGURED', 'Google OAuth is not configured on this server. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
+    }
     return new OAuth2Client(
       env.GOOGLE_CLIENT_ID,
       env.GOOGLE_CLIENT_SECRET,
@@ -138,7 +160,7 @@ export class GoogleDriveService {
       }
 
       const quota = about.data.storageQuota;
-      const quotaLimitBytes = quota?.limit ? BigInt(quota.limit) : BigInt(15 * 1024 * 1024 * 1024);
+      const quotaLimitBytes = quota?.limit ? BigInt(quota.limit) : DEFAULT_QUOTA_BYTES;
       const quotaUsedBytes = quota?.usage ? BigInt(quota.usage) : BigInt(0);
 
       // Ensure root folder '_UCSS_ROOT_' exists
@@ -194,21 +216,23 @@ export class GoogleDriveService {
 
       const q = about.data.storageQuota;
       return {
-        quotaLimitBytes: q?.limit ? BigInt(q.limit) : BigInt(15 * 1024 * 1024 * 1024),
+        quotaLimitBytes: q?.limit ? BigInt(q.limit) : DEFAULT_QUOTA_BYTES,
         quotaUsedBytes: q?.usage ? BigInt(q.usage) : BigInt(0),
         usageInDrive: q?.usageInDrive ? BigInt(q.usageInDrive) : BigInt(0),
         usageInTrash: q?.usageInDriveTrash ? BigInt(q.usageInDriveTrash) : BigInt(0),
       };
     } catch (error) {
       logger.error({ error }, 'Failed to fetch storage quota from Google Drive');
-      throw new ExternalServiceError('Google Drive', 'Failed to fetch storage quota');
+      throw driveError(error, 'Failed to fetch storage quota');
     }
   }
 
   /**
    * Finds or creates the dedicated UCSS root folder in the user's Drive.
    */
-  private static async ensureRootFolder(driveClient: drive_v3.Drive): Promise<string> {
+  private static async ensureRootFolder(driveClient: drive_v3.Drive, cacheKey?: string): Promise<string> {
+    const cached = cacheKey ? rootFolderCache.get(cacheKey) : undefined;
+    if (cached) return cached;
     try {
       const searchRes = await driveClient.files.list({
         q: `name = '${ROOT_FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
@@ -217,7 +241,9 @@ export class GoogleDriveService {
       });
 
       if (searchRes.data.files && searchRes.data.files.length > 0) {
-        return searchRes.data.files[0]!.id!;
+        const id = searchRes.data.files[0]!.id!;
+        if (cacheKey) rootFolderCache.set(cacheKey, id);
+        return id;
       }
 
       const createRes = await driveClient.files.create({
@@ -233,10 +259,11 @@ export class GoogleDriveService {
         throw new Error('Google Drive failed to create root folder');
       }
 
+      if (cacheKey) rootFolderCache.set(cacheKey, createRes.data.id);
       return createRes.data.id;
     } catch (error) {
       logger.error({ error }, 'Failed to ensure root folder');
-      throw new ExternalServiceError('Google Drive', 'Failed to initialize root storage folder');
+      throw driveError(error, 'Failed to initialize root storage folder');
     }
   }
 
@@ -249,11 +276,32 @@ export class GoogleDriveService {
     rootFolderId?: string;
     filename: string;
     mimeType: string;
-    body: stream.Readable | Buffer;
+    /** A factory lets a failed attempt be retried with a fresh stream. */
+    body: stream.Readable | Buffer | (() => stream.Readable);
+  }): Promise<{ driveFileId: string }> {
+    const MAX_ATTEMPTS = 4;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.uploadOnce(params);
+      } catch (error) {
+        const retryable = typeof params.body === 'function' && attempt < MAX_ATTEMPTS && isTransientDriveError((error as { cause?: unknown }).cause ?? error);
+        if (!retryable) throw error;
+        logger.warn({ attempt, filename: params.filename }, 'Transient Drive error; retrying upload');
+        await sleep(1000 * 2 ** (attempt - 1));
+      }
+    }
+  }
+
+  private static async uploadOnce(params: {
+    encryptedRefreshToken: string;
+    rootFolderId?: string;
+    filename: string;
+    mimeType: string;
+    body: stream.Readable | Buffer | (() => stream.Readable);
   }): Promise<{ driveFileId: string }> {
     try {
       const driveClient = this.getAuthenticatedClient(params.encryptedRefreshToken);
-      const rootFolderId = params.rootFolderId || (await this.ensureRootFolder(driveClient));
+      const rootFolderId = params.rootFolderId || (await this.ensureRootFolder(driveClient, params.encryptedRefreshToken));
       const res = await driveClient.files.create({
         requestBody: {
           name: params.filename,
@@ -261,7 +309,7 @@ export class GoogleDriveService {
         },
         media: {
           mimeType: params.mimeType,
-          body: Buffer.isBuffer(params.body) ? stream.Readable.from(params.body) : params.body,
+          body: typeof params.body === 'function' ? params.body() : Buffer.isBuffer(params.body) ? stream.Readable.from(params.body) : params.body,
         },
         fields: 'id, name, size',
       });
@@ -273,7 +321,10 @@ export class GoogleDriveService {
       return { driveFileId: res.data.id };
     } catch (error) {
       logger.error({ error, filename: params.filename }, 'Google Drive file upload failed');
-      throw new ExternalServiceError('Google Drive', 'Failed to upload file to Google Drive');
+      rootFolderCache.delete(params.encryptedRefreshToken); // folder may have been deleted by the user
+      const mapped = driveError(error, 'Failed to upload file to Google Drive');
+      (mapped as { cause?: unknown }).cause = error; // lets the retry loop inspect the raw Google error
+      throw mapped;
     }
   }
 
@@ -298,21 +349,24 @@ export class GoogleDriveService {
       return res.data as stream.Readable;
     } catch (error) {
       logger.error({ error, driveFileId: params.driveFileId }, 'Google Drive file download failed');
-      throw new ExternalServiceError('Google Drive', 'Failed to stream file from Google Drive');
+      throw driveError(error, 'Failed to stream file from Google Drive');
     }
   }
 
   /**
-   * Permanently deletes a file from Google Drive.
-   * Used for cleaning up orphaned files after rollback or failures.
+   * Permanently deletes a file from Google Drive (frees quota immediately; trash would not).
+   * Returns false instead of throwing so callers can finish their DB bookkeeping.
    */
-  static async deleteFile(encryptedRefreshToken: string, driveFileId: string): Promise<void> {
+  static async deleteFile(encryptedRefreshToken: string, driveFileId: string): Promise<boolean> {
     try {
       const driveClient = this.getAuthenticatedClient(encryptedRefreshToken);
       await driveClient.files.delete({ fileId: driveFileId });
       logger.info({ driveFileId }, 'Deleted file from Google Drive');
+      return true;
     } catch (error) {
-      logger.warn({ error, driveFileId }, 'Failed to delete file from Google Drive during cleanup');
+      if ((error as { code?: number }).code === 404) return true;
+      logger.warn({ error, driveFileId }, 'Failed to delete file from Google Drive');
+      return false;
     }
   }
 }

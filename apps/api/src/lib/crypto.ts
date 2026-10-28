@@ -22,8 +22,10 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;       // 96-bit IV for GCM
 const AUTH_TAG_LENGTH = 16; // 128-bit auth tag
 
-// Convert the hex key from env to a Buffer once at module load
-const KEY = Buffer.from(env.TOKEN_ENCRYPTION_KEY, 'hex');
+// 64 hex chars are the raw key; anything else is stretched to 32 bytes with SHA-256.
+const KEY = /^[0-9a-fA-F]{64}$/.test(env.TOKEN_ENCRYPTION_KEY)
+  ? Buffer.from(env.TOKEN_ENCRYPTION_KEY, 'hex')
+  : crypto.createHash('sha256').update(env.TOKEN_ENCRYPTION_KEY).digest();
 
 if (KEY.length !== 32) {
   throw new Error('TOKEN_ENCRYPTION_KEY must decode to exactly 32 bytes');

@@ -17,14 +17,20 @@
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import crypto from 'crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import jwt from 'jsonwebtoken';
 import { prisma } from '@ucss/database';
 import { AuthService } from '../services/auth.service.js';
-import { AllocationService } from '../services/allocation.service.js';
 import { FilesService } from '../services/files.service.js';
 import { GoogleDriveService } from '../services/google-drive.service.js';
+import { UploadService } from '../services/upload.service.js';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+import { uploadTmpDir } from '../lib/tmp.js';
+import { contentDisposition, guessMime, parseRange, pipeToResponse } from '../lib/http.js';
 
 export const webdavRouter = Router();
 
@@ -40,6 +46,10 @@ function escapeXml(unsafe: string): string {
 }
 
 // ─── WebDAV Authentication Middleware ───────────────────────────────────────
+
+// Finder/Explorer send Basic credentials on every request; bcrypt per request is too slow.
+// Verified credentials are remembered in memory for a minute (keyed by a hash of the header).
+const basicAuthCache = new Map<string, { user: { id: string; email: string }; expires: number }>();
 
 async function authenticateWebDAV(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers['authorization'];
@@ -69,11 +79,20 @@ async function authenticateWebDAV(req: Request, res: Response, next: NextFunctio
         return;
       }
 
+      const cacheKey = crypto.createHash('sha256').update(authHeader).digest('hex');
+      const cached = basicAuthCache.get(cacheKey);
+      if (cached && cached.expires > Date.now()) {
+        req.user = cached.user;
+        return next();
+      }
+
       const email = credentials.substring(0, colonIdx);
       const password = credentials.substring(colonIdx + 1);
 
-      const loginResult = await AuthService.login(email, password, req.ip);
+      const loginResult = await AuthService.login(email, password, req.ip, { audit: false });
       req.user = { id: loginResult.user.id, email: loginResult.user.email };
+      basicAuthCache.set(cacheKey, { user: req.user, expires: Date.now() + 60_000 });
+      if (basicAuthCache.size > 500) basicAuthCache.delete(basicAuthCache.keys().next().value!);
       return next();
     }
 
@@ -279,47 +298,31 @@ webdavRouter.get('*', async (req: Request, res: Response, next: NextFunction) =>
     }
 
     const totalSize = BigInt(fileRecord.size_bytes);
-    const rangeHeader = req.headers['range'];
+    const range = parseRange(req.headers['range'], totalSize);
+    if (range === 'unsatisfiable') {
+      res.status(416).setHeader('Content-Range', `bytes */${totalSize}`).end();
+      return;
+    }
+
+    const stream = await GoogleDriveService.downloadFileStream({
+      encryptedRefreshToken: account.encrypted_refresh_token,
+      driveFileId: fileRecord.drive_file_id,
+      ...(range ? { range: `bytes=${range.start}-${range.end}` } : {}),
+    });
 
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Content-Type', fileRecord.mime_type || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileRecord.display_filename)}"`);
-    if (fileRecord.checksum_sha256) {
-      res.setHeader('ETag', `"${fileRecord.checksum_sha256}"`);
-    }
-
-    if (rangeHeader && rangeHeader.startsWith('bytes=')) {
-      const parts = rangeHeader.replace(/bytes=/, '').split('-');
-      const start = parts[0] ? BigInt(parts[0]) : BigInt(0);
-      const end = parts[1] ? BigInt(parts[1]) : totalSize - BigInt(1);
-
-      if (start >= totalSize || end >= totalSize || start > end) {
-        res.status(416).setHeader('Content-Range', `bytes */${totalSize}`);
-        res.end();
-        return;
-      }
-
-      const chunkSize = end - start + BigInt(1);
-      const stream = await GoogleDriveService.downloadFileStream({
-        encryptedRefreshToken: account.encrypted_refresh_token,
-        driveFileId: fileRecord.drive_file_id,
-        range: `bytes=${start}-${end}`,
-      });
-
+    res.setHeader('Content-Disposition', contentDisposition('inline', fileRecord.display_filename));
+    if (fileRecord.checksum_sha256) res.setHeader('ETag', `"${fileRecord.checksum_sha256}"`);
+    if (range) {
       res.status(206);
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${totalSize}`);
-      res.setHeader('Content-Length', chunkSize.toString());
-      stream.pipe(res);
+      res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${totalSize}`);
+      res.setHeader('Content-Length', (range.end - range.start + 1n).toString());
     } else {
-      const stream = await GoogleDriveService.downloadFileStream({
-        encryptedRefreshToken: account.encrypted_refresh_token,
-        driveFileId: fileRecord.drive_file_id,
-      });
-
       res.status(200);
       res.setHeader('Content-Length', totalSize.toString());
-      stream.pipe(res);
     }
+    pipeToResponse(stream, res);
   } catch (error) {
     logger.error({ error }, 'WebDAV GET failed');
     next(error);
@@ -371,89 +374,62 @@ webdavRouter.head('*', async (req: Request, res: Response, next: NextFunction) =
 // ─── 4. PUT Handler (Native Desktop File Upload) ────────────────────────────
 
 webdavRouter.put('*', async (req: Request, res: Response, next: NextFunction) => {
+  const tmpPath = path.join(uploadTmpDir(), `webdav-${crypto.randomUUID()}`);
   try {
     const userId = req.user!.id;
     const filename = decodeURIComponent(req.path.replace(/^\/+/, ''));
 
-    if (!filename || filename === '') {
-      res.status(400).send('Filename missing in path');
+    if (!filename || filename.includes('/')) {
+      res.status(400).send('Filename missing or nested paths are not supported');
       return;
     }
 
     // Ignore macOS system metadata files
     if (filename === '.DS_Store' || filename.startsWith('._')) {
+      req.resume();
       res.status(201).end();
       return;
     }
 
-    // Collect stream chunks
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('error', (err) => next(err));
-
-    req.on('end', async () => {
-      try {
-        const buffer = Buffer.concat(chunks);
-        const fileSizeBytes = BigInt(buffer.length);
-
-        if (fileSizeBytes === BigInt(0)) {
-          // Zero-byte placeholder files created by Finder before streaming
-          res.status(201).end();
-          return;
-        }
-
-        // Allocate storage on optimal Drive account
-        const alloc = await AllocationService.allocateStorage({
-          userId,
-          originalFilename: filename,
-          displayFilename: filename,
-          fileSizeBytes,
-        });
-
-        // Compute SHA-256
-        const checksumSha256 = crypto.createHash('sha256').update(buffer).digest('hex');
-
-        // Fetch account refresh token
-        const [account] = await prisma.$queryRaw<Array<{ encrypted_refresh_token: string }>>`
-          SELECT encrypted_refresh_token
-          FROM drive_accounts
-          WHERE id = ${alloc.driveAccountId}::uuid
-          LIMIT 1;
-        `;
-
-        if (!account) {
-          throw new Error('Target drive account not found');
-        }
-
-        const startTime = Date.now();
-        const uploadRes = await GoogleDriveService.uploadFile({
-          encryptedRefreshToken: account.encrypted_refresh_token,
-          filename,
-          mimeType: 'application/octet-stream',
-          body: buffer,
-        });
-
-        const durationMs = Date.now() - startTime;
-        await AllocationService.commitUploadSuccess({
-          fileId: alloc.fileId,
-          uploadOperationId: alloc.uploadOperationId,
-          driveAccountId: alloc.driveAccountId,
-          fileSizeBytes,
-          reservedBytesToRelease: fileSizeBytes,
-          googleDriveFileId: uploadRes.driveFileId,
-          checksumSha256,
-          durationMs,
-          userId,
-        });
-
-        res.status(201).end();
-      } catch (uploadError) {
-        logger.error({ uploadError, filename }, 'WebDAV PUT upload failed');
-        next(uploadError);
-      }
+    // Spool to disk with a hard size cap instead of buffering the body in memory.
+    let received = 0;
+    const declared = Number(req.headers['content-length'] ?? 0);
+    if (declared > env.MAX_UPLOAD_BYTES) throw new AppError(413, 'FILE_TOO_LARGE', 'File exceeds the upload limit of this server');
+    req.on('data', (chunk: Buffer) => {
+      received += chunk.length;
+      if (received > env.MAX_UPLOAD_BYTES) req.destroy(new AppError(413, 'FILE_TOO_LARGE', 'File exceeds the upload limit of this server'));
     });
+    await pipeline(req, fs.createWriteStream(tmpPath));
+
+    if (received === 0) {
+      // Zero-byte placeholder files created by Finder before streaming
+      res.status(201).end();
+      return;
+    }
+
+    // PUT replaces: remember what currently has this name, delete it once the new copy is safe.
+    const previous = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM files
+      WHERE user_id = ${userId}::uuid AND is_deleted = false AND display_filename = ${filename}
+        AND upload_status = 'COMPLETED'::"UploadStatus";
+    `;
+
+    await UploadService.storeFromDisk({
+      userId,
+      filePath: tmpPath,
+      sizeBytes: BigInt(received),
+      originalFilename: filename,
+      displayFilename: filename,
+      mimeType: guessMime(filename, req.headers['content-type']),
+    });
+
+    for (const old of previous) await FilesService.softDeleteFile(userId, old.id);
+    res.status(previous.length > 0 ? 204 : 201).end();
   } catch (error) {
+    logger.error({ error }, 'WebDAV PUT upload failed');
     next(error);
+  } finally {
+    fs.rm(tmpPath, { force: true }, () => undefined);
   }
 });
 
@@ -520,8 +496,13 @@ webdavRouter.all('*', async (req: Request, res: Response, next: NextFunction) =>
       return;
     }
 
+    const clobbered = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM files
+      WHERE user_id = ${userId}::uuid AND is_deleted = false AND display_filename = ${destFilename} AND id <> ${file.id}::uuid;
+    `;
+    for (const old of clobbered) await FilesService.softDeleteFile(userId, old.id);
     await FilesService.renameFile(userId, file.id, destFilename);
-    res.status(201).end();
+    res.status(clobbered.length > 0 ? 204 : 201).end();
   } catch (error) {
     next(error);
   }

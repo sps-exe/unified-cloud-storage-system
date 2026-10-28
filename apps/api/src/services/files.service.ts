@@ -34,7 +34,13 @@ export class FilesService {
     const pageSize = Math.min(100, Math.max(1, query.pageSize || 20));
     const offset = (page - 1) * pageSize;
     const search = query.search?.trim() || null;
-    const mimeType = query.mimeType?.trim() || null;
+    // "image/" matches the whole family, "application/pdf" is exact; comma-separated for several.
+    const mimePatterns = (query.mimeType ?? '')
+      .split(',')
+      .map((m) => m.trim())
+      .filter(Boolean)
+      .map((m) => (m.endsWith('/') ? `${m}%` : m.replace(/\*/g, '%')));
+    const mimeFilter = mimePatterns.length > 0 ? mimePatterns : null;
     const driveAccountId = query.driveAccountId?.trim() || null;
     const sortBy = query.sortBy || 'createdAt';
     const sortOrder = query.sortOrder?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
@@ -84,7 +90,7 @@ export class FilesService {
         AND f.is_deleted = FALSE
         AND f.upload_status = 'COMPLETED'
         AND (${search}::text IS NULL OR f.display_filename ILIKE '%' || ${search} || '%')
-        AND (${mimeType}::text IS NULL OR f.mime_type ILIKE ${mimeType})
+        AND (${mimeFilter}::text[] IS NULL OR f.mime_type ILIKE ANY(${mimeFilter}::text[]))
         AND (${driveAccountId}::uuid IS NULL OR f.drive_account_id = ${driveAccountId}::uuid)
       ORDER BY 
         CASE WHEN ${sqlSortColumn} = 'display_filename' AND ${sortOrder} = 'ASC'  THEN f.display_filename END ASC,
@@ -93,6 +99,8 @@ export class FilesService {
         CASE WHEN ${sqlSortColumn} = 'size_bytes'       AND ${sortOrder} = 'DESC' THEN f.size_bytes END DESC,
         CASE WHEN ${sqlSortColumn} = 'created_at'       AND ${sortOrder} = 'ASC'  THEN f.created_at END ASC,
         CASE WHEN ${sqlSortColumn} = 'created_at'       AND ${sortOrder} = 'DESC' THEN f.created_at END DESC,
+        CASE WHEN ${sqlSortColumn} = 'updated_at'       AND ${sortOrder} = 'ASC'  THEN f.updated_at END ASC,
+        CASE WHEN ${sqlSortColumn} = 'updated_at'       AND ${sortOrder} = 'DESC' THEN f.updated_at END DESC,
         f.created_at DESC
       LIMIT ${pageSize}::int
       OFFSET ${offset}::int;
@@ -260,18 +268,29 @@ export class FilesService {
   }
 
   /**
-   * Soft deletes a file (non-negotiable architectural rule: soft-delete only).
+   * Deletes a file: removes the bytes from Google Drive (so the space is really freed),
+   * releases the quota counter, and keeps the DB row as a soft-deleted audit record.
    */
   static async softDeleteFile(
     userId: string,
     fileId: string,
   ): Promise<{ message: string }> {
     const [file] = await prisma.$queryRaw<
-      Array<{ id: string; display_filename: string; size_bytes: string; drive_account_id: string }>
+      Array<{
+        id: string;
+        display_filename: string;
+        size_bytes: string;
+        drive_account_id: string;
+        drive_file_id: string | null;
+        upload_status: UploadStatus;
+        encrypted_refresh_token: string;
+      }>
     >`
-      SELECT id, display_filename, size_bytes::text, drive_account_id
-      FROM files
-      WHERE id = ${fileId}::uuid AND user_id = ${userId}::uuid AND is_deleted = FALSE
+      SELECT f.id, f.display_filename, f.size_bytes::text, f.drive_account_id, f.drive_file_id,
+             f.upload_status::text AS upload_status, da.encrypted_refresh_token
+      FROM files f
+      JOIN drive_accounts da ON da.id = f.drive_account_id
+      WHERE f.id = ${fileId}::uuid AND f.user_id = ${userId}::uuid AND f.is_deleted = FALSE
       LIMIT 1;
     `;
 
@@ -279,39 +298,48 @@ export class FilesService {
       throw new NotFoundError('File');
     }
 
-    await prisma.$executeRaw`
-      UPDATE files
-      SET is_deleted = TRUE, deleted_at = NOW(), updated_at = NOW()
-      WHERE id = ${fileId}::uuid;
-    `;
+    const hasBytes = file.upload_status === 'COMPLETED' && !!file.drive_file_id;
+    const driveDeleted = hasBytes
+      ? await GoogleDriveService.deleteFile(file.encrypted_refresh_token, file.drive_file_id!)
+      : true;
 
-    // Audit log
-    await prisma.$executeRaw`
-      INSERT INTO audit_logs (
-        id,
-        user_id,
-        action,
-        resource_type,
-        resource_id,
-        metadata,
-        created_at
-      )
-      VALUES (
-        gen_random_uuid(),
-        ${userId}::uuid,
-        'FILE_SOFT_DELETED',
-        'FILE',
-        ${fileId}::uuid,
-        ${JSON.stringify({
-          displayFilename: file.display_filename,
-          sizeBytes: file.size_bytes,
-        })}::json,
-        NOW()
-      );
-    `;
+    await prisma.$transaction([
+      prisma.$executeRaw`
+        UPDATE files
+        SET is_deleted = TRUE, deleted_at = NOW(), updated_at = NOW()
+        WHERE id = ${fileId}::uuid;
+      `,
+      // Quota is re-synced from Google periodically; this keeps it right in between.
+      prisma.$executeRaw`
+        UPDATE drive_accounts
+        SET quota_used_bytes = GREATEST(0::bigint, quota_used_bytes - ${hasBytes ? BigInt(file.size_bytes) : 0n}::bigint),
+            updated_at = NOW()
+        WHERE id = ${file.drive_account_id}::uuid;
+      `,
+      prisma.$executeRaw`
+        INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, metadata, created_at)
+        VALUES (
+          gen_random_uuid(),
+          ${userId}::uuid,
+          'FILE_SOFT_DELETED',
+          'FILE',
+          ${fileId}::uuid,
+          ${JSON.stringify({
+            displayFilename: file.display_filename,
+            sizeBytes: file.size_bytes,
+            driveDeleted,
+          })}::json,
+          NOW()
+        );
+      `,
+    ]);
 
-    logger.info({ fileId, userId }, 'File soft-deleted');
-    return { message: 'File deleted successfully' };
+    logger.info({ fileId, userId, driveDeleted }, 'File deleted');
+    return {
+      message: driveDeleted
+        ? 'File deleted successfully'
+        : 'File removed from UCSS, but Google Drive could not be reached. Delete the leftover copy from the _UCSS_ROOT_ folder in that Drive account to free the space.',
+    };
   }
 
   /**

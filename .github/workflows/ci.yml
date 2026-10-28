@@ -1,4 +1,4 @@
-name: UCSS CI/CD Pipeline
+name: CI
 
 on:
   push:
@@ -7,72 +7,51 @@ on:
     branches: [main]
 
 jobs:
-  test-and-build:
-    name: Build, Lint & Automated Test Suite
+  test:
+    name: Typecheck, build and test
     runs-on: ubuntu-latest
 
     services:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: ucss_user
-          POSTGRES_PASSWORD: ucss_dev_password_change_in_prod
-          POSTGRES_DB: ucss_db
+          POSTGRES_USER: ci_user
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: ucss_ci
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
+          --health-cmd "pg_isready -U ci_user -d ucss_ci"
+          --health-interval 5s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://ci_user:ci_password@localhost:5432/ucss_ci
+      JWT_ACCESS_SECRET: ci-access-secret-ci-access-secret-0123456789
+      JWT_REFRESH_SECRET: ci-refresh-secret-ci-refresh-secret-0123456789
+      TOKEN_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
     steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 📦 Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
-
-      - name: 🟢 Setup Node.js (v20)
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4 # version comes from "packageManager" in package.json
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'pnpm'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @ucss/database exec prisma generate
+      - run: pnpm --filter @ucss/database exec prisma migrate deploy
+      - run: pnpm --filter @ucss/shared run build
+      - run: pnpm --filter @ucss/database run build
+      - run: pnpm --filter @ucss/api run lint
+      - run: pnpm --filter @ucss/web run build
+      - run: pnpm --filter @ucss/api run test
 
-      - name: 🐍 Setup Python (v3.11)
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: 📥 Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: 🔐 Configure test environment
-        run: |
-          cp .env.example .env
-          cp .env.example apps/api/.env
-          cp .env.example packages/database/.env
-          # Inject deterministic 64-char hex keys for testing
-          sed -i 's/REPLACE_WITH_64_BYTE_HEX_STRING_MIN_32_CHARS/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/g' .env apps/api/.env
-          sed -i 's/REPLACE_WITH_DIFFERENT_64_BYTE_HEX_STRING/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210/g' .env apps/api/.env
-          sed -i 's/REPLACE_WITH_EXACTLY_64_HEX_CHARS/abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789/g' .env apps/api/.env
-
-      - name: 🗄️ Run Prisma migrations
-        run: pnpm --filter @ucss/database prisma migrate deploy
-
-      - name: 🏗️ Typecheck & Build All Packages
-        run: pnpm build
-
-      - name: 🚀 Start API server for automated integration tests
-        run: |
-          pnpm --filter @ucss/api build
-          node apps/api/dist/server.js &
-          # Wait for health check
-          for i in {1..30}; do
-            curl -s http://localhost:4000/api/health && break || sleep 1
-          done
-
-      - name: 🧪 Execute Master Integration Test Suite (138 Assertions)
-        run: python3 scripts/run-all-tests.py
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t ucss:ci .

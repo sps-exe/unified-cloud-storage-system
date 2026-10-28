@@ -21,7 +21,7 @@ services:
         fromDatabase:
           name: ucss-postgres
           property: connectionString
-      - key: JWT_SECRET
+      - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
@@ -33,8 +33,12 @@ services:
         sync: false
       - key: GOOGLE_REDIRECT_URI
         sync: false
-      - key: CORS_ORIGIN
+      - key: APP_URL # https://<your-service>.onrender.com — also the Google redirect base
         sync: false
+      - key: TRUST_PROXY
+        value: 1
+      - key: ALLOW_REGISTRATION
+        value: true
 
 databases:
   # ─── Managed PostgreSQL 16 Database ────────────────────────────────────────

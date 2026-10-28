@@ -162,6 +162,21 @@ export class AccountsService {
     };
   }
 
+  /** Flags an account whose Google refresh token was revoked/expired so the UI prompts a reconnect. */
+  static async markTokenExpired(userId: string, accountId: string): Promise<void> {
+    await prisma.$executeRaw`
+      UPDATE drive_accounts
+      SET status = 'TOKEN_EXPIRED'::"AccountStatus", updated_at = NOW()
+      WHERE id = ${accountId}::uuid AND status = 'ACTIVE'::"AccountStatus";
+    `;
+    await prisma.$executeRaw`
+      INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, metadata, created_at)
+      VALUES (gen_random_uuid(), ${userId}::uuid, 'ACCOUNT_TOKEN_EXPIRED', 'DRIVE_ACCOUNT', ${accountId}::uuid,
+              '{"reason": "Google refresh token revoked or invalid_grant"}'::json, NOW());
+    `;
+    logger.warn({ accountId }, 'Drive account token expired — status set to TOKEN_EXPIRED');
+  }
+
   /**
    * Lists all connected Google Drive accounts for a user with available headroom
    * and live file counts.
@@ -249,23 +264,7 @@ export class AccountsService {
       quota = await GoogleDriveService.fetchStorageQuota(account.encrypted_refresh_token);
     } catch (err) {
       if (isTokenRevokedError(err)) {
-        await prisma.$executeRaw`
-          UPDATE drive_accounts
-          SET status = 'TOKEN_EXPIRED'::"AccountStatus", updated_at = NOW()
-          WHERE id = ${accountId}::uuid;
-        `;
-        await prisma.$executeRaw`
-          INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, metadata, created_at)
-          VALUES (
-            gen_random_uuid(),
-            ${userId}::uuid,
-            'ACCOUNT_TOKEN_EXPIRED',
-            'DRIVE_ACCOUNT',
-            ${accountId}::uuid,
-            '{"reason": "Google refresh token revoked or invalid_grant"}'::json,
-            NOW()
-          );
-        `;
+        await this.markTokenExpired(userId, accountId);
         throw new AppError(401, 'TOKEN_EXPIRED', 'Google Drive OAuth token has expired or been revoked. Please reconnect the account.');
       }
       throw err;

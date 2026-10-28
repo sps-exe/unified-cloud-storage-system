@@ -1,5 +1,5 @@
-version: '3.8'
-
+# One command: docker compose up -d --build   (then open http://localhost:4000)
+# First run: `pnpm setup` (or copy .env.example to .env and fill in the secrets).
 services:
   postgres:
     image: postgres:16-alpine
@@ -7,18 +7,32 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ucss_user
-      POSTGRES_PASSWORD: ucss_dev_password_change_in_prod
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ucss_dev_password_change_in_prod}
       POSTGRES_DB: ucss_db
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432" # local tools only; the app talks to it over the compose network
     volumes:
       - ucss_pgdata:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ucss_user -d ucss_db"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  app:
+    build: .
+    container_name: ucss_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_URL: postgresql://ucss_user:${POSTGRES_PASSWORD:-ucss_dev_password_change_in_prod}@postgres:5432/ucss_db
+    ports:
+      - "${PORT:-4000}:4000"
 
   pgadmin:
     image: dpage/pgadmin4:latest
@@ -28,7 +42,7 @@ services:
       PGADMIN_DEFAULT_EMAIL: admin@ucss.local
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
-      - "5050:80"
+      - "127.0.0.1:5050:80"
     depends_on:
       postgres:
         condition: service_healthy

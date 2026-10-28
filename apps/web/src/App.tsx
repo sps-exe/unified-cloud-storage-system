@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api } from './lib/api';
+import { api, type PublicConfig } from './lib/api';
+import { useToast } from './components/Toast';
 import { ToastProvider } from './components/Toast';
 import { Navbar } from './components/Navbar';
 import { StorageOverview } from './components/StorageOverview';
@@ -12,6 +13,8 @@ import { AuthModal } from './components/AuthModal';
 import type { FileDto, DriveAccountDto, PaginationMeta } from '@ucss/shared';
 
 function DashboardApp() {
+  const toast = useToast();
+  const [config, setConfig] = useState<PublicConfig | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [userEmail, setUserEmail] = useState('');
   
@@ -130,11 +133,18 @@ function DashboardApp() {
   // Initial load
   useEffect(() => {
     fetchProfileAndStorage();
+    api.request<PublicConfig>('/api/config').then((r) => setConfig(r.data)).catch(() => undefined);
     const params = new URLSearchParams(window.location.search);
+    const connectError = params.get('connect_error');
     if (params.get('connected') === 'true') {
       setIsAccountsOpen(true);
-      window.history.replaceState({}, '', window.location.pathname);
+      toast.success(`Connected ${params.get('email') ?? 'Google Drive account'}`);
+    } else if (connectError) {
+      setIsAccountsOpen(true);
+      toast.error(connectError);
     }
+    if (params.has('connected') || connectError) window.history.replaceState({}, '', window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchProfileAndStorage]);
 
   // Once authenticated, load accounts & files
@@ -172,6 +182,8 @@ function DashboardApp() {
   if (!isAuthenticated) {
     return (
       <AuthModal
+        registrationOpen={config?.registrationOpen ?? true}
+        firstRun={config?.firstRun ?? false}
         onSuccess={() => {
           setIsAuthenticated(true);
           fetchProfileAndStorage();
@@ -238,6 +250,7 @@ function DashboardApp() {
         onClose={() => setIsAccountsOpen(false)}
         accounts={accounts}
         onRefresh={refreshAll}
+        config={config}
       />
 
       <UploadModal
@@ -248,6 +261,7 @@ function DashboardApp() {
         }}
         accounts={accounts}
         initialFiles={uploadFiles}
+        maxUploadBytes={config?.maxUploadBytes}
         onUploadComplete={refreshAll}
       />
 
@@ -261,11 +275,12 @@ function DashboardApp() {
         isOpen={isWebdavOpen}
         onClose={() => setIsWebdavOpen(false)}
         userEmail={userEmail}
+        webdavUrl={config?.webdavUrl}
       />
 
       {/* Footer */}
       <footer className="border-t border-zinc-900 py-6 text-center text-xs text-zinc-500">
-        <p>Unified Cloud Storage System (UCSS) • PostgreSQL-First Multi-Drive Orchestrator</p>
+        <p>UCSS • Self-hosted storage pool for your Google Drive accounts</p>
       </footer>
     </div>
   );

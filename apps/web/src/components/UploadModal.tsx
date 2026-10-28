@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, UploadCloud, File, AlertCircle, HardDrive, Lock, Key, Folder, CheckCircle2 } from './icons';
-import { api, formatBytes, resolveUrl } from '../lib/api';
+import { api, formatBytes, uploadWithProgress } from '../lib/api';
 import { encryptFileClientSide } from '../lib/zk-crypto';
 import { extractFilesFromDataTransfer, type QueuedFile } from '../lib/file-tree';
 import { useToast } from './Toast';
@@ -13,6 +13,7 @@ interface UploadModalProps {
   onUploadComplete: () => void;
   initialFile?: File | null;
   initialFiles?: File[] | null;
+  maxUploadBytes?: number;
 }
 
 export const UploadModal: React.FC<UploadModalProps> = ({
@@ -22,6 +23,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   onUploadComplete,
   initialFile = null,
   initialFiles = null,
+  maxUploadBytes,
 }) => {
   const toast = useToast();
   const [dragOver, setDragOver] = useState(false);
@@ -141,6 +143,11 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       }
     }
 
+    // Fail before reserving quota if the server would reject the file anyway
+    if (maxUploadBytes && fileToUpload.size > maxUploadBytes) {
+      throw new Error(`${item.file.name} is larger than this server's ${formatBytes(maxUploadBytes)} upload limit`);
+    }
+
     // 1. Pre-flight allocation
     const allocPayload: Record<string, unknown> = {
       originalFilename: fileToUpload.name,
@@ -172,20 +179,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       formData.append('driveAccountId', selectedAccountId);
     }
 
-    const token = api.getToken();
-    const res = await fetch(resolveUrl('/api/files/upload'), {
-      method: 'POST',
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: formData,
-      credentials: 'include',
+    await uploadWithProgress('/api/files/upload', formData, (fraction) => {
+      setCurrentFileProgress(Math.min(99, Math.round(fraction * 100)));
     });
-
-    const body = await res.json();
-    if (!res.ok || !body.ok) {
-      throw new Error(body.error?.message || `Upload failed for ${item.file.name}`);
-    }
   };
 
   const handleBatchUpload = async () => {
@@ -194,26 +190,41 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     setIsUploading(true);
     setError(null);
     setCurrentFileIndex(0);
-    setCurrentFileProgress(10);
-    setOverallProgress(5);
+    setCurrentFileProgress(0);
+    setOverallProgress(0);
 
     try {
       let successCount = 0;
+      const failures: string[] = [];
       for (let i = 0; i < queue.length; i++) {
         setCurrentFileIndex(i);
-        setCurrentFileProgress(20);
+        setCurrentFileProgress(0);
 
         const currentItem = queue[i];
         const nameOverride = (queue.length === 1 && displayName) ? displayName : undefined;
 
-        await uploadSingleItem(currentItem, nameOverride);
-        successCount++;
+        // One bad file must not abort the other 231; collect failures and report at the end.
+        try {
+          await uploadSingleItem(currentItem, nameOverride);
+          successCount++;
+        } catch (err) {
+          if (queue.length === 1) throw err;
+          failures.push(`${currentItem.file.name}: ${err instanceof Error ? err.message : 'failed'}`);
+        }
 
         setCurrentFileProgress(100);
         const overall = Math.round(((i + 1) / queue.length) * 100);
         setOverallProgress(overall);
       }
 
+      if (failures.length > 0) {
+        const msg = `${successCount} uploaded, ${failures.length} failed. First error: ${failures[0]}`;
+        setError(msg);
+        toast.error(msg);
+        setIsUploading(false);
+        onUploadComplete();
+        return;
+      }
       if (queue.length === 1) {
         toast.success(`Uploaded "${displayName || queue[0].file.name}" successfully!`);
       } else {
@@ -411,7 +422,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                 <span>Target Google Drive Allocation</span>
               </label>
               <span className="text-[11px] text-zinc-500 font-mono">
-                {selectedAccountId === 'auto' ? 'Water-Level Balancing' : 'Pinned Account'}
+                {selectedAccountId === 'auto' ? 'Most free space first' : 'Pinned Account'}
               </span>
             </div>
 

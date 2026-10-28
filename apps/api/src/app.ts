@@ -26,9 +26,11 @@ import { filesRouter } from './routes/files.js';
 import { oauthRouter } from './routes/oauth.js';
 import { adminRouter } from './routes/admin.js';
 import { webdavRouter } from './routes/webdav.js';
+import { configRouter } from './routes/config.js';
 
 export function createApp() {
   const app = express();
+  if (env.TRUST_PROXY > 0) app.set('trust proxy', env.TRUST_PROXY); // correct client IPs for rate limiting
 
   // ─── Request Correlation ID Middleware ─────────────────────────────────────
   app.use((req, res, next) => {
@@ -42,7 +44,21 @@ export function createApp() {
   // ─── Security Headers ───────────────────────────────────────────────────────
   app.use(helmet(
     env.NODE_ENV === 'production'
-      ? undefined
+      ? {
+          contentSecurityPolicy: {
+            directives: {
+              // The preview modal renders decrypted/streamed files from blob: URLs.
+              'img-src': ["'self'", 'data:', 'blob:'],
+              'media-src': ["'self'", 'blob:'],
+              'frame-src': ["'self'", 'blob:'],
+              'object-src': ["'self'", 'blob:'],
+              // Tailwind/React inject inline styles; keep scripts strict.
+              'style-src': ["'self'", "'unsafe-inline'"],
+              // Self-hosted installs are often plain http on a LAN; don't force https subresources.
+              'upgrade-insecure-requests': null,
+            },
+          },
+        }
       : { contentSecurityPolicy: false }
   ));
 
@@ -62,22 +78,12 @@ export function createApp() {
   });
 
   // ─── CORS ────────────────────────────────────────────────────────────────────
+  const allowedOrigins = new Set(
+    [env.APP_URL, env.FRONTEND_URL].map((u) => new URL(u).origin),
+  );
   app.use(cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. mobile apps, curl, or same-origin static frontend)
-      if (!origin) return callback(null, true);
-      const allowed = [
-        env.FRONTEND_URL,
-        'http://localhost:4000',
-        'http://localhost:5173',
-        'http://127.0.0.1:4000',
-        'http://127.0.0.1:5173',
-      ];
-      if (allowed.includes(origin) || origin === env.FRONTEND_URL) {
-        return callback(null, true);
-      }
-      return callback(null, true); // Permissive in dev/local for seamless multi-port development
-    },
+    // Requests without an Origin (curl, WebDAV clients, same-origin GETs) are not cross-site.
+    origin: (origin, callback) => callback(null, !origin || allowedOrigins.has(origin)),
     credentials: true, // Required for cookie-based refresh tokens
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS', 'PROPFIND', 'MKCOL', 'MOVE', 'COPY', 'LOCK', 'UNLOCK', 'PROPPATCH', 'HEAD', 'PUT'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'Depth', 'Destination', 'Range', 'If', 'Lock-Token', 'Timeout'],
@@ -118,16 +124,22 @@ export function createApp() {
       message: { ok: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Upload rate limit exceeded' } },
     });
 
+    // Brute-force protection for Basic-auth network drive mounts (only failures count)
+    const webdavLimiter = rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: env.NODE_ENV === 'production' ? 60 : 1000,
+      skipSuccessfulRequests: true,
+      standardHeaders: true,
+      legacyHeaders: false,
+      skip: (req) => env.NODE_ENV !== 'production' && isLocalhost(req.ip),
+    });
+
+    app.use('/webdav', webdavLimiter);
     app.use('/api', apiLimiter);
     app.use('/api/auth/login', authLimiter);
     app.use('/api/auth/register', authLimiter);
     app.use('/api/files/upload', uploadLimiter);
   }
-
-  // ─── Body Parsing ────────────────────────────────────────────────────────────
-  app.use(express.json({ limit: '10kb' })); // Reject oversized JSON bodies
-  app.use(express.urlencoded({ extended: true, limit: '10kb' }));
-  app.use(cookieParser());
 
   // ─── Request Logging ──────────────────────────────────────────────────────────
   const pinoMiddleware = (pinoHttp as any).default || pinoHttp;
@@ -141,6 +153,14 @@ export function createApp() {
     redact: ['req.headers.authorization', 'req.headers.cookie'],
   }));
 
+  // ─── WebDAV (mounted BEFORE body parsers: it streams raw PUT bodies) ─────────
+  app.use('/webdav', webdavRouter);
+
+  // ─── Body Parsing ────────────────────────────────────────────────────────────
+  app.use(express.json({ limit: '10kb' })); // Reject oversized JSON bodies
+  app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+  app.use(cookieParser());
+
   // ─── Routes ────────────────────────────────────────────────────────────────
   app.use('/api/health', healthRouter);
   app.use('/api/auth', authRouter);
@@ -148,11 +168,16 @@ export function createApp() {
   app.use('/api/accounts', accountsRouter);
   app.use('/api/files', filesRouter);
   app.use('/api/admin', adminRouter);
-  app.use('/webdav', webdavRouter);
+  app.use('/api/config', configRouter);
 
   // ─── Static Frontend Serving (Unified Deployment Mode) ───────────────────────
-  const webDistPath = path.resolve(process.cwd(), '../web/dist');
-  if (fs.existsSync(webDistPath)) {
+  const webDistPath = [
+    env.WEB_DIST_DIR,
+    path.resolve(process.cwd(), 'public'), // Docker image layout
+    path.resolve(process.cwd(), '../web/dist'), // run from apps/api
+    path.resolve(process.cwd(), 'apps/web/dist'), // run from repo root
+  ].find((p) => p && fs.existsSync(path.join(p, 'index.html')));
+  if (webDistPath) {
     app.use(express.static(webDistPath));
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/webdav')) return next();

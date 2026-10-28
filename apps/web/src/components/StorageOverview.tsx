@@ -67,7 +67,7 @@ export const StorageOverview: React.FC<StorageOverviewProps> = ({
           /* Multi-account discrete segments */
           <div className="h-2.5 w-full bg-zinc-950 rounded overflow-hidden flex border border-zinc-800">
             {accounts.map((acc) => {
-              const accLimit = Number(acc.quotaLimitBytes) || (15 * 1024 * 1024 * 1024);
+              const accLimit = Number(acc.quotaLimitBytes) || 1;
               const accUsed = Number(acc.quotaUsedBytes) || 0;
               const accReserved = Number(acc.reservedBytes) || 0;
               const weightPct = Math.max(5, (accLimit / limit) * 100);

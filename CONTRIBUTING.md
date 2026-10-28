@@ -9,30 +9,26 @@ Thank you for your interest in contributing to UCSS! We welcome contributions to
 ### 1. Prerequisites
 - **Node.js** >= 20.x
 - **pnpm** >= 9.x
-- **PostgreSQL** 16 (or Docker Compose)
-- **Python** 3.10+ (for integration test runners)
+- **PostgreSQL** 14+ (or Docker Compose)
 
 ### 2. Local Setup
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/unified-cloud-storage-system.git
+git clone https://github.com/sps-exe/unified-cloud-storage-system.git
 cd unified-cloud-storage-system
 
 # Install dependencies across the monorepo
 pnpm install
 
-# Configure environment variables
-cp .env.example .env
-# Populate JWT secrets and encryption keys as indicated in .env.example
+# Generate .env with fresh secrets
+node scripts/setup.mjs
 
-# Start local PostgreSQL via Docker
-docker-compose up -d postgres
+# Start local PostgreSQL via Docker and apply migrations
+docker compose up -d postgres
+pnpm db:deploy
 
-# Run database schema migrations
-pnpm --filter @ucss/database prisma migrate dev
-
-# Start development daemon
-python3 scripts/dev-server.py start
+# API on :4000 and Vite UI on :5173 (proxied to the API)
+pnpm dev
 ```
 
 ---
@@ -85,8 +81,8 @@ We enforce [Conventional Commits](https://www.conventionalcommits.org/). Commit 
 2. **Strict TypeScript**:
    - Zero `any` types without explicit lint disables and comments.
    - All API endpoints must enforce input validation via **Zod**.
-3. **Data Integrity & Non-Destructive Storage**:
-   - File deletions are strictly soft deletions (`is_deleted = TRUE`, `deleted_at = NOW()`). Never execute raw `DELETE FROM files`.
+3. **Data Integrity**:
+   - Deleting a file removes the bytes from Google Drive and frees quota, but the `files` row stays as a soft-deleted audit record (`is_deleted = TRUE`, `deleted_at = NOW()`). Never execute raw `DELETE FROM files` in app code.
 4. **Token Security**:
    - OAuth tokens must always pass through `encryptToken()` / `decryptToken()` using AES-256-GCM. Unencrypted tokens must never appear in logs or client-facing responses.
 
@@ -96,9 +92,12 @@ We enforce [Conventional Commits](https://www.conventionalcommits.org/). Commit 
 
 Before opening a pull request, ensure all tests pass:
 
+Tests run against a real Postgres with a fake Google Drive. Use a throwaway database, never one with real data:
+
 ```bash
-# Run full master test suite (all assertions must pass 100%)
-python3 scripts/run-all-tests.py
+createdb ucss_test && psql ucss_test -f packages/database/prisma/migrations/0_init/migration.sql
+DATABASE_URL=postgresql://user:pass@localhost:5432/ucss_test NODE_ENV=test pnpm --filter @ucss/api test
+pnpm lint   # type-checks api and web
 ```
 
 ---

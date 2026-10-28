@@ -38,6 +38,13 @@ oauthRouter.get(
     try {
       const code = req.query['code'];
       const state = req.query['state'];
+      const wantsJson = Boolean(req.headers.accept?.includes('application/json'));
+      const toApp = (qs: string) => res.redirect(`${env.APP_URL.replace(/\/$/, '')}/?${qs}`);
+
+      // User clicked "Cancel" on Google's consent screen
+      if (typeof req.query['error'] === 'string' && !wantsJson) {
+        return toApp(`connect_error=${encodeURIComponent('Google connection was cancelled')}`);
+      }
 
       if (typeof code !== 'string' || typeof state !== 'string') {
         throw new ValidationError('Missing authorization code or state parameter');
@@ -50,7 +57,7 @@ oauthRouter.get(
       const account = await AccountsService.connectAccount(userId, code);
 
       // If client prefers JSON (e.g., API test), return JSON
-      if (req.headers.accept?.includes('application/json')) {
+      if (wantsJson) {
         const response: ApiResponse<typeof account> = {
           ok: true,
           data: account,
@@ -59,10 +66,14 @@ oauthRouter.get(
         return;
       }
 
-      // Otherwise redirect back to frontend dashboard
-      const origin = req.headers.host ? `${req.protocol}://${req.headers.host}` : env.FRONTEND_URL;
-      res.redirect(`${origin}/?connected=true&email=${encodeURIComponent(account.googleEmail)}`);
+      // Otherwise redirect back to the app (APP_URL, never the Host header, to avoid open redirects)
+      toApp(`connected=true&email=${encodeURIComponent(account.googleEmail)}`);
     } catch (error) {
+      // Browser flow: land on the dashboard with a readable message instead of a raw JSON error page
+      if (!req.headers.accept?.includes('application/json')) {
+        const message = error instanceof Error ? error.message : 'Failed to connect Google account';
+        return res.redirect(`${env.APP_URL.replace(/\/$/, '')}/?connect_error=${encodeURIComponent(message)}`);
+      }
       next(error);
     }
   },

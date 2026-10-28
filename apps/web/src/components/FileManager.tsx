@@ -117,8 +117,8 @@ export const FileManager: React.FC<FileManagerProps> = ({
         a.download = filename;
         document.body.appendChild(a);
         a.click();
-        window.URL.revokeObjectURL(blobUrl);
         document.body.removeChild(a);
+        setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10_000); // revoking instantly can cancel the save
         toast.success(`Downloaded ${filename}`);
       })
       .catch((err) => toast.error('Download failed: ' + err.message));
@@ -189,10 +189,11 @@ export const FileManager: React.FC<FileManagerProps> = ({
 
   const mimeFilters = [
     { label: 'All Files', value: '' },
-    { label: 'Documents', value: 'application/pdf,text/plain' },
+    { label: 'Documents', value: 'application/pdf,text/,application/msword,application/vnd.openxmlformats*,application/vnd.ms-*' },
     { label: 'Images', value: 'image/' },
     { label: 'Videos', value: 'video/' },
-    { label: 'Archives', value: 'application/zip,application/x-tar' },
+    { label: 'Archives', value: 'application/zip,application/x-tar,application/gzip,application/x-7z-compressed,application/vnd.rar' },
+    { label: 'Audio', value: 'audio/' },
   ];
 
   return (
@@ -564,7 +565,7 @@ export const FileManager: React.FC<FileManagerProps> = ({
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 max-w-sm w-full space-y-4 shadow-xl">
             <h3 className="text-sm font-semibold text-rose-400">Confirm Deletion</h3>
             <p className="text-xs text-zinc-400 leading-relaxed">
-              Are you sure you want to delete <strong className="text-zinc-200">{deletingFile.displayFilename}</strong>? Soft-deletion preserves database audit traces while freeing capacity.
+              Are you sure you want to delete <strong className="text-zinc-200">{deletingFile.displayFilename}</strong>? The file is permanently removed from Google Drive and its space is freed. This cannot be undone.
             </p>
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
