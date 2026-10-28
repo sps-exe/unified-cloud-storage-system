@@ -26,7 +26,7 @@ Open <http://localhost:4000>, create your account (the first one is always allow
 > **Back up `TOKEN_ENCRYPTION_KEY`** from `.env`. It protects the stored Google tokens; if it is lost, every Drive account must be reconnected.
 
 ### Without Docker
-Needs Node 20+, pnpm 9+, PostgreSQL 14+.
+Needs Node 22+, pnpm 11+, PostgreSQL 14+.
 
 ```bash
 pnpm install

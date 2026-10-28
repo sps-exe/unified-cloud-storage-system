@@ -4,7 +4,7 @@
 # =============================================================================
 
 # ─── Stage 1: build ──────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache libc6-compat openssl
 RUN corepack enable && corepack prepare pnpm@11.22.0 --activate
@@ -25,7 +25,7 @@ RUN pnpm --filter @ucss/database exec prisma generate \
  && pnpm --filter @ucss/web run build
 
 # ─── Stage 2: runtime ────────────────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
 RUN apk add --no-cache openssl ca-certificates tzdata wget
 
