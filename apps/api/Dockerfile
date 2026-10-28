@@ -3,7 +3,7 @@
 # (Build context must be repository root: docker build -f apps/api/Dockerfile .)
 # =============================================================================
 
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ RUN pnpm --filter @ucss/database run build
 RUN pnpm --filter @ucss/api run build
 RUN pnpm --filter @ucss/web run build
 
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 
