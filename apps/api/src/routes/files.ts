@@ -13,28 +13,32 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import crypto from 'crypto';
-import { prisma } from '@ucss/database';
+import fs from 'node:fs';
 import { requireAuth, validateBody, validateQuery } from '../middleware/index.js';
 import { AllocationService } from '../services/allocation.service.js';
+import { AccountsService } from '../services/accounts.service.js';
 import { FilesService } from '../services/files.service.js';
-import { GoogleDriveService } from '../services/google-drive.service.js';
+import { UploadService } from '../services/upload.service.js';
+import { GoogleDriveService, isTokenRevokedError } from '../services/google-drive.service.js';
 import { AppError, ValidationError, NotFoundError } from '../lib/errors.js';
-import { logger } from '../lib/logger.js';
+import { env } from '../lib/env.js';
+import { uploadTmpDir } from '../lib/tmp.js';
+import { contentDisposition, parseRange, pipeToResponse } from '../lib/http.js';
 
 export const filesRouter = Router();
 
 // ─── Multer Configuration ───────────────────────────────────────────────────
+// Spooled to disk (not RAM) so large files don't balloon the Node heap.
 const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB max single file upload
+  storage: multer.diskStorage({ destination: (_req, _file, cb) => cb(null, uploadTmpDir()) }),
+  limits: { fileSize: env.MAX_UPLOAD_BYTES },
 });
 
 function handleMultipart(req: Request, res: Response, next: NextFunction) {
   upload.single('file')(req, res, (err) => {
     if (err) {
       if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-        return next(new AppError(413, 'FILE_TOO_LARGE', 'File size exceeds maximum allowed 100 MB limit'));
+        return next(new AppError(413, 'FILE_TOO_LARGE', `File exceeds the ${Math.floor(env.MAX_UPLOAD_BYTES / 1024 ** 2)} MB upload limit of this server`));
       }
       return next(new AppError(400, 'MULTIPART_ERROR', err.message));
     }
@@ -80,6 +84,11 @@ const renameFileSchema = z.object({
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
+// Reject malformed ids up front; otherwise the ::uuid cast in SQL surfaces as a 500.
+filesRouter.param('id', (_req, _res, next, id: string) => {
+  next(z.string().uuid().safeParse(id).success ? undefined : new NotFoundError('File'));
+});
+
 /**
  * POST /api/files/allocate (and /initiate-upload)
  * Pre-flights storage reservation on the optimal Drive account.
@@ -124,119 +133,34 @@ filesRouter.post('/initiate-upload', requireAuth, validateBody(initiateUploadSch
  */
 filesRouter.post('/upload', requireAuth, handleMultipart, async (req: Request, res: Response, next: NextFunction) => {
   const file = req.file;
-  if (!file) {
-    return next(new ValidationError('Missing file payload in "file" form field'));
-  }
-
-  const userId = req.user!.id;
-  const fileSizeBytes = BigInt(file.size);
-  let fileId = req.body.fileId as string | undefined;
-  let uploadOperationId = req.body.uploadOperationId as string | undefined;
-  let driveAccountId: string;
-  let reservedBytesToRelease = fileSizeBytes;
-
   try {
-    if (fileId && uploadOperationId) {
-      // 1. Verify pre-flight reservation
-      const [existingFile] = await prisma.$queryRaw<Array<{ id: string; drive_account_id: string; size_bytes: string }>>`
-        SELECT id, drive_account_id, size_bytes::text
-        FROM files
-        WHERE id = ${fileId}::uuid AND user_id = ${userId}::uuid AND upload_status = 'PENDING'::"UploadStatus"
-        LIMIT 1;
-      `;
-      if (!existingFile) {
-        throw new NotFoundError('Pending file reservation not found or expired');
-      }
-      driveAccountId = existingFile.drive_account_id;
-      reservedBytesToRelease = BigInt(existingFile.size_bytes);
-    } else {
-      // 2. Perform on-the-fly allocation
-      const displayFilename = req.body.displayFilename || file.originalname;
-      const requestedDriveAccountId = req.body.driveAccountId as string | undefined;
-      const alloc = await AllocationService.allocateStorage({
-        userId,
-        originalFilename: file.originalname,
-        displayFilename,
-        fileSizeBytes,
-        mimeType: file.mimetype,
-        ...(requestedDriveAccountId ? { driveAccountId: requestedDriveAccountId } : {}),
-      });
-      fileId = alloc.fileId;
-      uploadOperationId = alloc.uploadOperationId;
-      driveAccountId = alloc.driveAccountId;
-      reservedBytesToRelease = fileSizeBytes;
-    }
+    if (!file) throw new ValidationError('Missing file payload in "file" form field');
 
-    // 3. Compute SHA-256 hash
-    const checksumSha256 = crypto.createHash('sha256').update(file.buffer).digest('hex');
+    const userId = req.user!.id;
+    // multer decodes multipart filenames as latin1; recover the UTF-8 name.
+    const originalFilename = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    const { fileId, uploadOperationId, displayFilename, driveAccountId } = req.body as Record<string, string | undefined>;
+    const uuid = z.string().uuid();
 
-    // 4. Retrieve target Google Drive account credentials
-    const [account] = await prisma.$queryRaw<Array<{ encrypted_refresh_token: string }>>`
-      SELECT encrypted_refresh_token
-      FROM drive_accounts
-      WHERE id = ${driveAccountId}::uuid
-      LIMIT 1;
-    `;
-
-    if (!account) {
-      throw new NotFoundError('Target drive account');
-    }
-
-    // 5. Stream upload to Google Drive
-    const startTime = Date.now();
-    let googleDriveFileId: string | undefined;
-
-    try {
-      const uploadRes = await GoogleDriveService.uploadFile({
-        encryptedRefreshToken: account.encrypted_refresh_token,
-        filename: file.originalname,
-        mimeType: file.mimetype,
-        body: file.buffer,
-      });
-      googleDriveFileId = uploadRes.driveFileId;
-
-      // 6. Commit successful upload
-      const durationMs = Date.now() - startTime;
-      await AllocationService.commitUploadSuccess({
-        fileId: fileId!,
-        uploadOperationId: uploadOperationId!,
-        driveAccountId,
-        fileSizeBytes,
-        reservedBytesToRelease,
-        googleDriveFileId,
-        checksumSha256,
-        durationMs,
-        userId,
-      });
-    } catch (uploadError) {
-      // If file was created on Drive before commit failed, perform best-effort cleanup
-      if (googleDriveFileId) {
-        try {
-          await GoogleDriveService.deleteFile(account.encrypted_refresh_token, googleDriveFileId);
-        } catch (cleanupErr) {
-          logger.warn({ cleanupErr, googleDriveFileId }, 'Failed to clean up orphaned Drive file');
-        }
-      }
-
-      // Release reserved bytes on failure
-      await AllocationService.releaseReservation({
-        fileId: fileId!,
-        uploadOperationId: uploadOperationId!,
-        driveAccountId,
-        reservedBytesToRelease,
-        errorMessage: uploadError instanceof Error ? uploadError.message : 'Upload or commit failed',
-      });
-      throw uploadError;
-    }
-
-    // 7. Return created file metadata
-    const completedFile = await FilesService.getFile(userId, fileId!);
-    res.status(201).json({
-      ok: true,
-      data: completedFile,
+    const newFileId = await UploadService.storeFromDisk({
+      userId,
+      filePath: file.path,
+      sizeBytes: BigInt(file.size),
+      originalFilename,
+      displayFilename: displayFilename || originalFilename,
+      mimeType: file.mimetype,
+      ...(fileId && uploadOperationId
+        ? { reservation: { fileId: uuid.parse(fileId), uploadOperationId: uuid.parse(uploadOperationId) } }
+        : driveAccountId
+          ? { driveAccountId: uuid.parse(driveAccountId) }
+          : {}),
     });
+
+    res.status(201).json({ ok: true, data: await FilesService.getFile(userId, newFileId) });
   } catch (err) {
-    next(err);
+    next(err instanceof z.ZodError ? new ValidationError('Invalid id in upload form') : err);
+  } finally {
+    if (file) fs.rm(file.path, { force: true }, () => undefined);
   }
 });
 
@@ -303,56 +227,41 @@ async function handleFileStream(req: Request, res: Response, next: NextFunction,
     }
 
     const totalSize = BigInt(file.sizeBytes);
-    const rangeHeader = req.headers.range;
-    const isInline = forceInline || req.query.inline === 'true';
-    const dispositionType = isInline ? 'inline' : 'attachment';
+    const range = parseRange(req.headers.range, totalSize);
+    if (range === 'unsatisfiable') {
+      res.status(416).setHeader('Content-Range', `bytes */${totalSize}`).end();
+      return;
+    }
 
+    // Open the Drive stream first: if it fails, the error response must not inherit file headers.
+    const fileStream = await GoogleDriveService.downloadFileStream({
+      encryptedRefreshToken,
+      driveFileId: file.driveFileId,
+      ...(range ? { range: `bytes=${range.start}-${range.end}` } : {}),
+    }).catch(async (err) => {
+      if (isTokenRevokedError(err)) {
+        const { driveAccountId } = await FilesService.getFile(userId, fileId);
+        await AccountsService.markTokenExpired(userId, driveAccountId);
+      }
+      throw err;
+    });
+
+    const isInline = forceInline || req.query.inline === 'true';
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
-    res.setHeader(
-      'Content-Disposition',
-      `${dispositionType}; filename="${encodeURIComponent(file.displayFilename)}"`,
-    );
-    if (file.checksumSha256) {
-      res.setHeader('ETag', `"${file.checksumSha256}"`);
-    }
+    res.setHeader('Content-Disposition', contentDisposition(isInline ? 'inline' : 'attachment', file.displayFilename));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (file.checksumSha256) res.setHeader('ETag', `"${file.checksumSha256}"`);
 
-    if (rangeHeader && rangeHeader.startsWith('bytes=')) {
-      const parts = rangeHeader.replace(/bytes=/, '').split('-');
-      const startStr = parts[0]?.trim();
-      const endStr = parts[1]?.trim();
-
-      const start = startStr ? BigInt(startStr) : BigInt(0);
-      const end = endStr ? BigInt(endStr) : (totalSize - BigInt(1));
-
-      if (start >= totalSize || end >= totalSize || start > end) {
-        res.status(416);
-        res.setHeader('Content-Range', `bytes */${totalSize}`);
-        res.end();
-        return;
-      }
-
-      const chunkSize = end - start + BigInt(1);
-      const fileStream = await GoogleDriveService.downloadFileStream({
-        encryptedRefreshToken,
-        driveFileId: file.driveFileId,
-        range: `bytes=${start}-${end}`,
-      });
-
+    if (range) {
       res.status(206);
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${totalSize}`);
-      res.setHeader('Content-Length', chunkSize.toString());
-      fileStream.pipe(res);
+      res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${totalSize}`);
+      res.setHeader('Content-Length', (range.end - range.start + 1n).toString());
     } else {
-      const fileStream = await GoogleDriveService.downloadFileStream({
-        encryptedRefreshToken,
-        driveFileId: file.driveFileId,
-      });
-
       res.status(200);
       res.setHeader('Content-Length', totalSize.toString());
-      fileStream.pipe(res);
     }
+    pipeToResponse(fileStream, res);
   } catch (err) {
     next(err);
   }

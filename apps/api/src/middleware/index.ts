@@ -39,7 +39,13 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
 
     if (authHeader?.startsWith('Bearer ')) {
       token = authHeader.slice(7);
-    } else if (typeof req.query.token === 'string' && req.query.token) {
+    } else if (
+      // <img>/<video>/<iframe> can't send headers, so only the file-content GETs accept ?token=
+      req.method === 'GET' &&
+      /\/files\/[^/]+\/(stream|download)$/.test(req.originalUrl.split('?')[0]!) &&
+      typeof req.query.token === 'string' &&
+      req.query.token
+    ) {
       token = req.query.token;
     }
 

@@ -15,6 +15,8 @@
 
 import { prisma } from '@ucss/database';
 import { GoogleDriveService, isTokenRevokedError } from './google-drive.service.js';
+import { AccountsService } from './accounts.service.js';
+import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
 
 export interface StuckFileRecord {
@@ -68,10 +70,12 @@ export class ReconciliationService {
     uploadingThresholdMinutes?: number;
     pendingThresholdMinutes?: number;
     batchSize?: number;
+    userId?: string; // restrict to one user's files (omit for the system-wide worker)
   } = {}): Promise<StuckFileRecord[]> {
-    const uploadingMinutes = options.uploadingThresholdMinutes ?? 30;
-    const pendingMinutes = options.pendingThresholdMinutes ?? 5;
+    const uploadingMinutes = options.uploadingThresholdMinutes ?? env.STUCK_UPLOAD_THRESHOLD_MINUTES;
+    const pendingMinutes = options.pendingThresholdMinutes ?? env.STUCK_PENDING_THRESHOLD_MINUTES;
     const batchSize = options.batchSize ?? 50;
+    const userId = options.userId ?? null;
 
     interface StuckRow {
       file_id: string;
@@ -111,6 +115,7 @@ export class ReconciliationService {
         ) uo ON TRUE
         WHERE
           f.is_deleted = FALSE
+          AND (${userId}::uuid IS NULL OR f.user_id = ${userId}::uuid)
           AND (
             (f.upload_status = 'UPLOADING'::"UploadStatus" AND f.updated_at < NOW() - (${uploadingMinutes}::int || ' minutes')::interval)
             OR
@@ -202,7 +207,7 @@ export class ReconciliationService {
    * Resets orphaned byte reservations where reserved_bytes is non-zero
    * but does not match the actual in-flight file sum.
    */
-  static async reconcileOrphanedReservations(): Promise<ReconciledAccountRecord[]> {
+  static async reconcileOrphanedReservations(userId: string | null = null): Promise<ReconciledAccountRecord[]> {
     interface DriftRow {
       account_id: string;
       google_email: string;
@@ -227,6 +232,7 @@ export class ReconciliationService {
         LEFT JOIN files f ON f.drive_account_id = da.id
         WHERE
           da.reserved_bytes > 0
+          AND (${userId}::uuid IS NULL OR da.user_id = ${userId}::uuid)
           AND da.status != 'DISCONNECTED'::"AccountStatus"
         GROUP BY da.id, da.google_email, da.user_id, da.reserved_bytes
         HAVING
@@ -288,7 +294,7 @@ export class ReconciliationService {
    * Periodically re-syncs all active Drive account quotas with Google Drive API
    * and saves point-in-time time-series snapshots.
    */
-  static async syncAllAccountQuotas(): Promise<number> {
+  static async syncAllAccountQuotas(userId: string | null = null): Promise<number> {
     interface AccountSyncTarget {
       id: string;
       user_id: string;
@@ -299,7 +305,8 @@ export class ReconciliationService {
     const accounts = await prisma.$queryRaw<Array<AccountSyncTarget>>`
       SELECT id, user_id, encrypted_refresh_token, google_email
       FROM drive_accounts
-      WHERE status = 'ACTIVE'::"AccountStatus";
+      WHERE status = 'ACTIVE'::"AccountStatus"
+        AND (${userId}::uuid IS NULL OR user_id = ${userId}::uuid);
     `;
 
     let syncedCount = 0;
@@ -360,24 +367,7 @@ export class ReconciliationService {
             syncedCount++;
           } catch (err) {
             if (isTokenRevokedError(err)) {
-              await prisma.$executeRaw`
-                UPDATE drive_accounts
-                SET status = 'TOKEN_EXPIRED'::"AccountStatus", updated_at = NOW()
-                WHERE id = ${acc.id}::uuid;
-              `;
-              await prisma.$executeRaw`
-                INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, metadata, created_at)
-                VALUES (
-                  gen_random_uuid(),
-                  ${acc.user_id}::uuid,
-                  'ACCOUNT_TOKEN_EXPIRED',
-                  'DRIVE_ACCOUNT',
-                  ${acc.id}::uuid,
-                  '{"reason": "Google refresh token revoked or expired during sync"}'::json,
-                  NOW()
-                );
-              `;
-              logger.warn({ accountId: acc.id, email: acc.google_email }, 'Account token expired — updated status to TOKEN_EXPIRED');
+              await AccountsService.markTokenExpired(acc.user_id, acc.id);
             } else {
               logger.warn({ accountId: acc.id, email: acc.google_email, error: err }, 'Failed to sync account quota');
             }
@@ -395,10 +385,11 @@ export class ReconciliationService {
   static async runFullReconciliation(options?: {
     uploadingThresholdMinutes?: number;
     pendingThresholdMinutes?: number;
+    userId?: string;
   }): Promise<ReconciliationReport> {
     const stuck = await this.reconcileStuckUploads(options);
-    const reservations = await this.reconcileOrphanedReservations();
-    const quotasCount = await this.syncAllAccountQuotas();
+    const reservations = await this.reconcileOrphanedReservations(options?.userId ?? null);
+    const quotasCount = await this.syncAllAccountQuotas(options?.userId ?? null);
 
     return {
       timestamp: new Date().toISOString(),
@@ -411,7 +402,7 @@ export class ReconciliationService {
   /**
    * Retrieves high-level consistency and health metrics.
    */
-  static async getHealthSummary(): Promise<SystemHealthSummary> {
+  static async getHealthSummary(userId: string | null = null): Promise<SystemHealthSummary> {
     interface SummaryRow {
       completed_files: string;
       pending_files: string;
@@ -445,7 +436,8 @@ export class ReconciliationService {
         COALESCE(SUM(size_bytes) FILTER (
           WHERE upload_status = 'COMPLETED'::"UploadStatus" AND is_deleted = FALSE
         ), 0)::text AS total_managed_bytes
-      FROM files;
+      FROM files
+      WHERE (${userId}::uuid IS NULL OR user_id = ${userId}::uuid);
     `;
 
     interface AccountOverviewRow {
@@ -461,7 +453,8 @@ export class ReconciliationService {
         COALESCE(SUM(quota_limit_bytes) FILTER (WHERE status = 'ACTIVE'::"AccountStatus"), 0)::text AS total_quota_bytes,
         COALESCE(SUM(quota_used_bytes) FILTER (WHERE status = 'ACTIVE'::"AccountStatus"), 0)::text AS total_used_bytes,
         COALESCE(SUM(reserved_bytes) FILTER (WHERE status = 'ACTIVE'::"AccountStatus"), 0)::text AS total_reserved_bytes
-      FROM drive_accounts;
+      FROM drive_accounts
+      WHERE (${userId}::uuid IS NULL OR user_id = ${userId}::uuid);
     `;
 
     return {

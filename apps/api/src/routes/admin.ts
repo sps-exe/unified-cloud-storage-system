@@ -21,9 +21,10 @@ const reconcileOptionsSchema = z.object({
  * GET /api/admin/health
  * Returns deep system health diagnostics across files, accounts, and quotas.
  */
-adminRouter.get('/health', requireAuth, async (_req: Request, res: Response, next: NextFunction) => {
+adminRouter.get('/health', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const summary = await ReconciliationService.getHealthSummary();
+    // Scoped to the caller: other users' data on a shared server is not theirs to see.
+    const summary = await ReconciliationService.getHealthSummary(req.user!.id);
     res.json({
       ok: true,
       data: summary,
@@ -44,8 +45,7 @@ adminRouter.post(
   validateBody(reconcileOptionsSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const options = req.body;
-      const report = await ReconciliationService.runFullReconciliation(options);
+      const report = await ReconciliationService.runFullReconciliation({ ...req.body, userId: req.user!.id });
       res.json({
         ok: true,
         data: report,

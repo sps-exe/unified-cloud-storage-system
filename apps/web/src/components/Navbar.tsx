@@ -1,3 +1,4 @@
+import { formatBytes } from '../lib/api';
 import React from 'react';
 import { Database, HardDrive, LogOut, ShieldCheck, User, Folder } from './icons';
 
@@ -30,10 +31,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <span className="font-bold text-sm tracking-tight text-zinc-100">UCSS</span>
-            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
-              {activeAccountsCount}D-FABRIC
-            </span>
-            <span className="text-zinc-600 hidden sm:inline">•</span>
             <span className="text-xs text-zinc-500 hidden sm:inline">Unified Cloud Storage</span>
           </div>
         </div>
@@ -45,11 +42,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
           <span className="text-zinc-400">
-            <strong className="text-zinc-200 font-mono tabular-nums">{activeAccountsCount}</strong> Connected Drives
+            <strong className="text-zinc-200 font-mono tabular-nums">{activeAccountsCount}</strong> {activeAccountsCount === 1 ? 'drive' : 'drives'} connected
           </span>
           <span className="text-zinc-700">|</span>
           <span className="text-zinc-400">
-            <strong className="text-zinc-200 font-mono tabular-nums">~{totalCapacityGb.toFixed(0)} GB</strong> Aggregated
+            <strong className="text-zinc-200 font-mono tabular-nums">{formatBytes(totalCapacityGb * 1024 ** 3)}</strong> total
           </span>
         </div>
 

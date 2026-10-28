@@ -1,13 +1,19 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Database, Lock, Mail, ArrowRight, Check, AlertCircle } from './icons';
 import { api } from '../lib/api';
 
 interface AuthModalProps {
   onSuccess: () => void;
+  registrationOpen?: boolean;
+  firstRun?: boolean;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
-  const [isRegister, setIsRegister] = useState(false);
+export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess, registrationOpen = true, firstRun = false }) => {
+  // A brand-new install has no users, so start on "create your account".
+  const [isRegister, setIsRegister] = useState(firstRun);
+  useEffect(() => {
+    if (firstRun) setIsRegister(true); // config usually arrives after first paint
+  }, [firstRun]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -69,7 +75,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
             Unified Cloud Storage System
           </h1>
           <p className="text-xs text-zinc-400 mt-1">
-            Aggregated multi-account Google Drive file manager with PostgreSQL
+            {firstRun
+              ? 'Welcome! Create the first account to set up your storage pool.'
+              : 'Pool all your Google Drive accounts into one storage space.'}
           </p>
         </div>
 
@@ -89,7 +97,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Shaurya Pratap Singh"
+                placeholder="Your name"
                 className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-md text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 font-mono"
               />
             </div>
@@ -186,6 +194,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
 
         {/* Switch Auth Mode */}
         <div className="mt-4 pt-4 border-t border-zinc-800/80 flex items-center justify-center text-xs">
+          {!registrationOpen && !isRegister ? (
+            <span className="text-zinc-500 font-mono">Sign-ups are closed on this server</span>
+          ) : (
           <button
             onClick={() => {
               setIsRegister(!isRegister);
@@ -195,6 +206,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onSuccess }) => {
           >
             {isRegister ? 'Already registered? Sign In' : "Don't have an account? Sign Up"}
           </button>
+          )}
         </div>
       </div>
     </div>

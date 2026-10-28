@@ -38,5 +38,5 @@ Elevate the Unified Cloud Storage System into an elite virtual filesystem with n
   - Instant in-line preview triggers and encryption lock indicators.
 
 - [x] **Task 7: Comprehensive Verification & Test Suite**
-  - All 6 test phases verified with 138/138 passing assertions in automated test suite (`scripts/run-all-tests.py`).
+  - Covered by the automated test suite (`apps/api/src/__tests__`).
   - Zero TypeScript errors (`tsc --noEmit`), clean production builds, and active PostgreSQL transactional state machine.

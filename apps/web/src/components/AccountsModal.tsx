@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, HardDrive, RefreshCw, Plus, Trash2, CheckCircle2 } from './icons';
-import { api, formatBytes } from '../lib/api';
+import { api, formatBytes, type PublicConfig } from '../lib/api';
 import { useToast } from './Toast';
 import type { DriveAccountDto } from '@ucss/shared';
 
@@ -9,6 +9,7 @@ interface AccountsModalProps {
   onClose: () => void;
   accounts: DriveAccountDto[];
   onRefresh: () => void;
+  config?: PublicConfig | null;
 }
 
 export const AccountsModal: React.FC<AccountsModalProps> = ({
@@ -16,6 +17,7 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
   onClose,
   accounts,
   onRefresh,
+  config = null,
 }) => {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
@@ -81,7 +83,7 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
               <HardDrive className="h-4 w-4 text-zinc-400" />
               <span>Connected Drive Accounts</span>
               <span className="text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono">
-                {accounts.length} Active
+                {accounts.filter((a) => a.status === 'ACTIVE').length} Active
               </span>
             </h2>
             <p className="text-xs text-zinc-400 mt-0.5">
@@ -104,11 +106,24 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
           </div>
         )}
 
+        {/* First-run: Google OAuth credentials are required before any account can be linked */}
+        {config && !config.googleConfigured && (
+          <div className="px-6 py-3 bg-amber-500/10 border-b border-amber-500/20 text-amber-300 text-xs space-y-1.5">
+            <p className="font-semibold">One-time setup: add Google OAuth credentials</p>
+            <ol className="list-decimal list-inside space-y-0.5 text-amber-200/80">
+              <li>Create an OAuth client (type: Web application) in the Google Cloud Console and enable the Drive API.</li>
+              <li>Add this redirect URI: <code className="font-mono text-amber-100 select-all">{config.googleRedirectUri}</code></li>
+              <li>Put the client ID and secret in <code className="font-mono">GOOGLE_CLIENT_ID</code> / <code className="font-mono">GOOGLE_CLIENT_SECRET</code> in your <code className="font-mono">.env</code> and restart.</li>
+            </ol>
+            <p className="text-amber-200/70">Full walkthrough: docs/google-oauth-setup.md</p>
+          </div>
+        )}
+
         {/* Action Controls */}
         <div className="px-6 py-3 bg-zinc-950/60 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3">
           <button
             onClick={handleConnectLive}
-            disabled={loading}
+            disabled={loading || (config !== null && !config.googleConfigured)}
             className="flex items-center gap-2 px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-medium transition disabled:opacity-50"
           >
             {loading ? (
@@ -196,6 +211,16 @@ export const AccountsModal: React.FC<AccountsModalProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1">
+                      {acc.status === 'TOKEN_EXPIRED' && (
+                        <button
+                          onClick={handleConnectLive}
+                          disabled={loading}
+                          className="px-2 py-1 rounded-md text-[11px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 transition"
+                          title="Google access expired or was revoked. Sign in again with this account."
+                        >
+                          Reconnect
+                        </button>
+                      )}
                       <button
                         onClick={() => handleSyncAccount(acc.id)}
                         disabled={loading}

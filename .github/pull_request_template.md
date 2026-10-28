@@ -14,7 +14,7 @@
 
 ## 🧪 Verification & Testing
 <!-- Describe the tests you executed to verify your changes. -->
-- [ ] Master integration test suite passed (`python3 scripts/run-all-tests.py`)
+- [ ] Test suite passed (`pnpm --filter @ucss/api test` against a throwaway DB)
 - [ ] Manual verification in Web UI or Postman completed
 - [ ] TypeScript compilation verified (`pnpm build`)
 
@@ -22,5 +22,5 @@
 - [ ] My code adheres to the project's coding standards and Conventional Commits.
 - [ ] Zero unencrypted tokens or secrets are introduced in code or logs.
 - [ ] SQL changes preserve row-level locking (`FOR UPDATE SKIP LOCKED`) and advisory locks where applicable.
-- [ ] Soft deletion semantics (`is_deleted = TRUE`) are strictly maintained.
+- [ ] File deletion still frees Drive space and keeps the soft-deleted audit row.
 - [ ] Relevant documentation has been updated.

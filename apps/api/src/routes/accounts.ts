@@ -5,12 +5,18 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { AccountsService } from '../services/accounts.service.js';
 import { requireAuth } from '../middleware/index.js';
+import { NotFoundError } from '../lib/errors.js';
 import type { ApiResponse } from '@ucss/shared';
 
 export const accountsRouter = Router();
 
 // Protect all account routes with JWT authentication
 accountsRouter.use(requireAuth);
+
+// Malformed ids would otherwise blow up in the SQL ::uuid cast as a 500.
+accountsRouter.param('id', (_req, _res, next, id: string) => {
+  next(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? undefined : new NotFoundError('Drive account'));
+});
 
 // ─── GET /api/accounts ────────────────────────────────────────────────────────
 // Lists all connected Google Drive accounts with available storage and file counts

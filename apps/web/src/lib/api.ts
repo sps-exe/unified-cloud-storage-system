@@ -174,9 +174,42 @@ export function formatBytes(bytesStr: string | number | bigint): string {
     if (isNaN(bytes) || bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    const i = Math.min(sizes.length - 1, Math.max(0, Math.floor(Math.log(bytes) / Math.log(k))));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   } catch {
     return '0 B';
   }
+}
+
+export interface PublicConfig {
+  registrationOpen: boolean;
+  firstRun: boolean;
+  googleConfigured: boolean;
+  googleRedirectUri: string;
+  maxUploadBytes: number;
+  webdavUrl: string;
+}
+
+/** POSTs multipart form data with upload progress (fetch can't report it). */
+export function uploadWithProgress(
+  endpoint: string,
+  form: FormData,
+  onProgress: (fraction: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', resolveUrl(endpoint));
+    const token = api.getToken();
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.onload = () => {
+      let body: ApiResponse<unknown> | null = null;
+      try { body = JSON.parse(xhr.responseText); } catch { /* non-JSON error page */ }
+      if (xhr.status >= 200 && xhr.status < 300 && body?.ok) return resolve();
+      reject(new Error((body && !body.ok && body.error.message) || `Upload failed (HTTP ${xhr.status})`));
+    };
+    xhr.send(form);
+  });
 }

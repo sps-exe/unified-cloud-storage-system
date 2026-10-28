@@ -13,13 +13,15 @@ interface WebdavModalProps {
   isOpen: boolean;
   onClose: () => void;
   userEmail: string;
+  webdavUrl?: string;
 }
 
-export const WebdavModal: React.FC<WebdavModalProps> = ({ isOpen, onClose, userEmail }) => {
+export const WebdavModal: React.FC<WebdavModalProps> = ({ isOpen, onClose, userEmail, webdavUrl: configuredUrl }) => {
+  // Hooks must run on every render, so the early return comes after them.
+  const [copiedUrl, setCopiedUrl] = useState(false);
   if (!isOpen) return null;
 
-  const [copiedUrl, setCopiedUrl] = useState(false);
-  const webdavUrl = `${window.location.protocol}//${window.location.hostname}:4000/webdav`;
+  const webdavUrl = configuredUrl || `${window.location.origin}/webdav`;
 
   const copyUrl = () => {
     navigator.clipboard.writeText(webdavUrl);

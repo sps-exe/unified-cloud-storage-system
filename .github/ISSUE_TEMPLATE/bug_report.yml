@@ -56,5 +56,5 @@ body:
     id: logs
     attributes:
       label: Relevant Logs
-      description: Paste relevant logs from `python3 scripts/dev-server.py logs 50` (Redact tokens!).
+      description: Paste relevant server logs (`docker compose logs --tail 50 app`). Redact tokens and emails.
       render: shell

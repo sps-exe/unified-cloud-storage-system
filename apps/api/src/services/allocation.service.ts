@@ -43,7 +43,8 @@ export class AllocationService {
     const { userId, originalFilename, fileSizeBytes, driveAccountId } = input;
     const displayFilename = input.displayFilename?.trim() || originalFilename;
     const mimeType = input.mimeType || 'application/octet-stream';
-    const safetyMargin = env.QUOTA_SAFETY_MARGIN_BYTES; // e.g. 500 MB
+    const safetyMargin = env.QUOTA_SAFETY_MARGIN_BYTES;
+    const marginMb = Number(safetyMargin / BigInt(1024 * 1024));
 
     return await prisma.$transaction(async (tx) => {
       // 1. Select the account with the most available headroom that can fit this file, or the requested specific account
@@ -79,7 +80,7 @@ export class AllocationService {
         bestAccount = specific[0];
         if (!bestAccount) {
           throw new QuotaExceededError(
-            'The selected Google Drive account does not have sufficient available storage for this file (500 MB safety margin enforced)',
+            `The selected Google Drive account does not have sufficient available storage for this file (a ${marginMb} MB safety margin is enforced)`,
           );
         }
       } else {
@@ -109,7 +110,7 @@ export class AllocationService {
             'Storage allocation failed: insufficient capacity across all connected accounts',
           );
           throw new QuotaExceededError(
-            'No connected Google Drive account has sufficient storage for this file (500 MB safety margin enforced)',
+            `No connected Google Drive account has sufficient storage for this file (a ${marginMb} MB safety margin is enforced)`,
           );
         }
       }
@@ -212,6 +213,17 @@ export class AllocationService {
         fileSizeBytes,
       };
     });
+  }
+
+  /**
+   * Flags the file/operation as UPLOADING. Without this a long upload stays PENDING and the
+   * reconciler (5 min PENDING threshold) aborts it while bytes are still streaming.
+   */
+  static async markUploading(fileId: string, uploadOperationId: string): Promise<void> {
+    await prisma.$transaction([
+      prisma.$executeRaw`UPDATE files SET upload_status = 'UPLOADING'::"UploadStatus", updated_at = NOW() WHERE id = ${fileId}::uuid AND upload_status = 'PENDING'::"UploadStatus";`,
+      prisma.$executeRaw`UPDATE upload_operations SET status = 'UPLOADING'::"UploadStatus", updated_at = NOW() WHERE id = ${uploadOperationId}::uuid AND status = 'PENDING'::"UploadStatus";`,
+    ]);
   }
 
   /**

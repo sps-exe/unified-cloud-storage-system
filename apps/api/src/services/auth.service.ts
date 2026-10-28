@@ -15,6 +15,7 @@ import { env } from '../lib/env.js';
 import {
   AppError,
   ConflictError,
+  ForbiddenError,
   UnauthorizedError,
   NotFoundError,
 } from '../lib/errors.js';
@@ -77,6 +78,11 @@ export class AuthService {
   }): Promise<{ user: UserProfile; tokens: TokenPair }> {
     const normalizedEmail = input.email.toLowerCase().trim();
 
+    // Self-hosters can close signups once their own account exists (the first user is always allowed).
+    if (!env.ALLOW_REGISTRATION && (await this.countUsers()) > 0) {
+      throw new ForbiddenError('Registration is disabled on this server');
+    }
+
     // Raw SQL check for existing user (case-insensitive)
     const existing = await prisma.$queryRaw<Array<{ id: string }>>`
       SELECT id FROM users WHERE LOWER(email) = LOWER(${normalizedEmail}) LIMIT 1
@@ -89,7 +95,7 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(input.password, SALT_ROUNDS);
     const displayName = input.displayName?.trim() || normalizedEmail.split('@')[0];
 
-    // Raw SQL atomic insertion returning created user
+    // Raw SQL atomic insertion returning created user; the unique index settles concurrent signups.
     const [created] = await prisma.$queryRaw<Array<UserProfile>>`
       INSERT INTO users (
         id,
@@ -108,7 +114,12 @@ export class AuthService {
         NOW()
       )
       RETURNING id, email, display_name AS "displayName", created_at AS "createdAt"
-    `;
+    `.catch((error: unknown) => {
+      if (String((error as Error)?.message).includes('23505')) {
+        throw new ConflictError('An account with this email address already exists');
+      }
+      throw error;
+    });
 
     if (!created) {
       throw new AppError(500, 'USER_CREATION_FAILED', 'Failed to create user record');
@@ -128,6 +139,7 @@ export class AuthService {
     email: string,
     password: string,
     clientIp?: string,
+    options: { audit?: boolean } = {},
   ): Promise<{ user: UserProfile; tokens: TokenPair }> {
     const normalizedEmail = email.toLowerCase().trim();
 
@@ -156,9 +168,9 @@ export class AuthService {
       throw new UnauthorizedError('Invalid email or password');
     }
 
-    // Insert structured audit log
+    // Insert structured audit log (skipped for per-request WebDAV Basic auth)
     try {
-      await prisma.$executeRaw`
+      if (options.audit !== false) await prisma.$executeRaw`
         INSERT INTO audit_logs (
           id,
           user_id,
@@ -193,6 +205,11 @@ export class AuthService {
     };
 
     return { user: userProfile, tokens };
+  }
+
+  static async countUsers(): Promise<number> {
+    const [row] = await prisma.$queryRaw<Array<{ n: number }>>`SELECT COUNT(*)::int AS n FROM users`;
+    return row?.n ?? 0;
   }
 
   /**
