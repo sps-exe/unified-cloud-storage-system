@@ -105,6 +105,12 @@ export class AllocationService {
         `;
         bestAccount = eligible[0];
         if (!bestAccount) {
+          const [{ n } = { n: 0 }] = await tx.$queryRaw<Array<{ n: number }>>`
+            SELECT COUNT(*)::int AS n FROM drive_accounts WHERE user_id = ${userId}::uuid AND status = 'ACTIVE';
+          `;
+          if (n === 0) {
+            throw new AppError(409, 'NO_DRIVE_ACCOUNT', 'No Google Drive account is connected yet. Open Accounts and connect one first.');
+          }
           logger.warn(
             { userId, fileSize: fileSizeBytes.toString() },
             'Storage allocation failed: insufficient capacity across all connected accounts',
