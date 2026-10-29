@@ -251,6 +251,7 @@ webdavRouter.all('*', async (req: Request, res: Response, next: NextFunction) =>
 // ─── 3. GET / HEAD Handlers (Streaming with Range Support) ──────────────────
 
 webdavRouter.get('*', async (req: Request, res: Response, next: NextFunction) => {
+  if (req.method === 'HEAD') return next(); // Express routes HEAD here first; the head handler below answers without streaming
   try {
     const userId = req.user!.id;
     const rawPath = decodeURIComponent(req.path.replace(/^\/+/, ''));
@@ -496,12 +497,21 @@ webdavRouter.all('*', async (req: Request, res: Response, next: NextFunction) =>
       return;
     }
 
+    if (!destFilename.trim() || destFilename.includes('/')) {
+      res.status(400).send('Destination must be a file name directly under /webdav/');
+      return;
+    }
+
     const clobbered = await prisma.$queryRaw<Array<{ id: string }>>`
       SELECT id FROM files
       WHERE user_id = ${userId}::uuid AND is_deleted = false AND display_filename = ${destFilename} AND id <> ${file.id}::uuid;
     `;
-    for (const old of clobbered) await FilesService.softDeleteFile(userId, old.id);
+    if (clobbered.length > 0 && String(req.headers['overwrite'] ?? 'T').toUpperCase() === 'F') {
+      res.status(412).send('Destination exists and Overwrite is F');
+      return;
+    }
     await FilesService.renameFile(userId, file.id, destFilename);
+    for (const old of clobbered) await FilesService.softDeleteFile(userId, old.id);
     res.status(clobbered.length > 0 ? 204 : 201).end();
   } catch (error) {
     next(error);

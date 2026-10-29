@@ -57,6 +57,8 @@ function isTransientDriveError(error: unknown): boolean {
 }
 
 const rootFolderCache = new Map<string, string>();
+const rootFolderInflight = new Map<string, Promise<string>>();
+const oauthClientCache = new Map<string, OAuth2Client>();
 
 export interface OAuthCallbackResult {
   googleEmail: string;
@@ -185,13 +187,14 @@ export class GoogleDriveService {
    * Instantiates an authenticated Google Drive client for an account.
    */
   static getAuthenticatedClient(encryptedRefreshToken: string): drive_v3.Drive {
-    const refreshToken = decryptToken(encryptedRefreshToken);
-    const oauth2Client = this.getOAuth2Client();
-
-    oauth2Client.setCredentials({
-      refresh_token: refreshToken,
-    });
-
+    // Reuse one client per account so its access token (~1h) is not re-minted on every call.
+    let oauth2Client = oauthClientCache.get(encryptedRefreshToken);
+    if (!oauth2Client) {
+      oauth2Client = this.getOAuth2Client();
+      oauth2Client.setCredentials({ refresh_token: decryptToken(encryptedRefreshToken) });
+      if (oauthClientCache.size >= 200) oauthClientCache.delete(oauthClientCache.keys().next().value!);
+      oauthClientCache.set(encryptedRefreshToken, oauth2Client);
+    }
     return drive({ version: 'v3', auth: oauth2Client });
   }
 
@@ -204,12 +207,8 @@ export class GoogleDriveService {
     usageInDrive: bigint;
     usageInTrash: bigint;
   }> {
-    const refreshToken = decryptToken(encryptedRefreshToken);
-
     try {
-      const oauth2Client = this.getOAuth2Client();
-      oauth2Client.setCredentials({ refresh_token: refreshToken });
-      const driveClient = drive({ version: 'v3', auth: oauth2Client });
+      const driveClient = this.getAuthenticatedClient(encryptedRefreshToken);
       const about = await driveClient.about.get({
         fields: 'storageQuota',
       });
@@ -230,9 +229,25 @@ export class GoogleDriveService {
   /**
    * Finds or creates the dedicated UCSS root folder in the user's Drive.
    */
-  private static async ensureRootFolder(driveClient: drive_v3.Drive, cacheKey?: string): Promise<string> {
-    const cached = cacheKey ? rootFolderCache.get(cacheKey) : undefined;
-    if (cached) return cached;
+  private static ensureRootFolder(driveClient: drive_v3.Drive, cacheKey?: string): Promise<string> {
+    if (!cacheKey) return this.findOrCreateRootFolder(driveClient);
+    const cached = rootFolderCache.get(cacheKey);
+    if (cached) return Promise.resolve(cached);
+    // Concurrent first uploads share one lookup so only one _UCSS_ROOT_ folder is ever created.
+    let pending = rootFolderInflight.get(cacheKey);
+    if (!pending) {
+      pending = this.findOrCreateRootFolder(driveClient)
+        .then((id) => {
+          rootFolderCache.set(cacheKey, id);
+          return id;
+        })
+        .finally(() => rootFolderInflight.delete(cacheKey));
+      rootFolderInflight.set(cacheKey, pending);
+    }
+    return pending;
+  }
+
+  private static async findOrCreateRootFolder(driveClient: drive_v3.Drive): Promise<string> {
     try {
       const searchRes = await driveClient.files.list({
         q: `name = '${ROOT_FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
@@ -241,9 +256,7 @@ export class GoogleDriveService {
       });
 
       if (searchRes.data.files && searchRes.data.files.length > 0) {
-        const id = searchRes.data.files[0]!.id!;
-        if (cacheKey) rootFolderCache.set(cacheKey, id);
-        return id;
+return searchRes.data.files[0]!.id!;
       }
 
       const createRes = await driveClient.files.create({
@@ -259,7 +272,6 @@ export class GoogleDriveService {
         throw new Error('Google Drive failed to create root folder');
       }
 
-      if (cacheKey) rootFolderCache.set(cacheKey, createRes.data.id);
       return createRes.data.id;
     } catch (error) {
       logger.error({ error }, 'Failed to ensure root folder');
