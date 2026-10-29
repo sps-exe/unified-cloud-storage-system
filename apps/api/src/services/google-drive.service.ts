@@ -292,15 +292,38 @@ return searchRes.data.files[0]!.id!;
     body: stream.Readable | Buffer | (() => stream.Readable);
   }): Promise<{ driveFileId: string }> {
     const MAX_ATTEMPTS = 4;
+    // Every attempt carries this tag, so a retry can first check whether an earlier attempt
+    // actually landed (e.g. the connection dropped after Drive stored the file).
+    const uploadTag = crypto.randomUUID();
     for (let attempt = 1; ; attempt++) {
       try {
-        return await this.uploadOnce(params);
+        return await this.uploadOnce(params, uploadTag);
       } catch (error) {
         const retryable = typeof params.body === 'function' && attempt < MAX_ATTEMPTS && isTransientDriveError((error as { cause?: unknown }).cause ?? error);
+        const landed = await this.findTaggedFile(params.encryptedRefreshToken, uploadTag);
+        if (landed.length > 0) {
+          // The file made it despite the error; keep one copy, drop any extras.
+          await Promise.all(landed.slice(1).map((id) => this.deleteFile(params.encryptedRefreshToken, id)));
+          return { driveFileId: landed[0]! };
+        }
         if (!retryable) throw error;
         logger.warn({ attempt, filename: params.filename }, 'Transient Drive error; retrying upload');
         await sleep(1000 * 2 ** (attempt - 1));
       }
+    }
+  }
+
+  /** Ids of files this server created for one upload attempt group; best effort (empty on lookup failure). */
+  private static async findTaggedFile(encryptedRefreshToken: string, uploadTag: string): Promise<string[]> {
+    try {
+      const res = await this.getAuthenticatedClient(encryptedRefreshToken).files.list({
+        q: `appProperties has { key='ucssUploadId' and value='${uploadTag}' } and trashed = false`,
+        fields: 'files(id)',
+        spaces: 'drive',
+      });
+      return (res.data.files ?? []).flatMap((f) => (f.id ? [f.id] : []));
+    } catch {
+      return [];
     }
   }
 
@@ -310,7 +333,7 @@ return searchRes.data.files[0]!.id!;
     filename: string;
     mimeType: string;
     body: stream.Readable | Buffer | (() => stream.Readable);
-  }): Promise<{ driveFileId: string }> {
+  }, uploadTag: string): Promise<{ driveFileId: string }> {
     try {
       const driveClient = this.getAuthenticatedClient(params.encryptedRefreshToken);
       const rootFolderId = params.rootFolderId || (await this.ensureRootFolder(driveClient, params.encryptedRefreshToken));
@@ -318,6 +341,7 @@ return searchRes.data.files[0]!.id!;
         requestBody: {
           name: params.filename,
           parents: [rootFolderId],
+          appProperties: { ucssUploadId: uploadTag },
         },
         media: {
           mimeType: params.mimeType,
