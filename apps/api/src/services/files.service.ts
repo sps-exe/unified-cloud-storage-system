@@ -298,6 +298,10 @@ export class FilesService {
       throw new NotFoundError('File');
     }
 
+    if (file.upload_status === 'PENDING' || file.upload_status === 'UPLOADING') {
+      throw new AppError(409, 'UPLOAD_IN_PROGRESS', 'This file is still uploading; wait for it to finish or fail before deleting it');
+    }
+
     const hasBytes = file.upload_status === 'COMPLETED' && !!file.drive_file_id;
     const driveDeleted = hasBytes
       ? await GoogleDriveService.deleteFile(file.encrypted_refresh_token, file.drive_file_id!)
@@ -312,7 +316,7 @@ export class FilesService {
       // Quota is re-synced from Google periodically; this keeps it right in between.
       prisma.$executeRaw`
         UPDATE drive_accounts
-        SET quota_used_bytes = GREATEST(0::bigint, quota_used_bytes - ${hasBytes ? BigInt(file.size_bytes) : 0n}::bigint),
+        SET quota_used_bytes = GREATEST(0::bigint, quota_used_bytes - ${hasBytes && driveDeleted ? BigInt(file.size_bytes) : 0n}::bigint),
             updated_at = NOW()
         WHERE id = ${file.drive_account_id}::uuid;
       `,

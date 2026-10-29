@@ -11,7 +11,7 @@ import { prisma } from '@ucss/database';
 import { AllocationService } from './allocation.service.js';
 import { AccountsService } from './accounts.service.js';
 import { GoogleDriveService, isTokenRevokedError } from './google-drive.service.js';
-import { NotFoundError } from '../lib/errors.js';
+import { AppError, NotFoundError } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
 
 export interface StoreFileInput {
@@ -68,6 +68,7 @@ export class UploadService {
 
     let driveFileId: string | undefined;
     let refreshToken: string | undefined;
+    let heartbeat: NodeJS.Timeout | undefined;
     try {
       const [account] = await prisma.$queryRaw<Array<{ encrypted_refresh_token: string }>>`
         SELECT encrypted_refresh_token FROM drive_accounts WHERE id = ${driveAccountId}::uuid LIMIT 1;
@@ -75,7 +76,14 @@ export class UploadService {
       if (!account) throw new NotFoundError('Target drive account');
       refreshToken = account.encrypted_refresh_token;
 
+      // A reservation sized by the client must cover what was actually sent.
+      if (sizeBytes > reserved) throw new AppError(413, 'SIZE_EXCEEDS_RESERVATION', 'Uploaded file is larger than the size reserved for it');
+
       await AllocationService.markUploading(fileId, uploadOperationId);
+      // Keep updated_at fresh so the reconciler does not abort a long but healthy upload.
+      heartbeat = setInterval(() => {
+        prisma.$executeRaw`UPDATE files SET updated_at = NOW() WHERE id = ${fileId}::uuid AND upload_status = 'UPLOADING'::"UploadStatus";`.catch(() => undefined);
+      }, 5 * 60_000);
 
       // Fresh stream + hash per attempt so a retried upload still yields a correct checksum.
       let hash = crypto.createHash('sha256');
@@ -126,6 +134,8 @@ export class UploadService {
         logger.error({ releaseError, fileId }, 'Failed to release reservation; reconciler will recover it');
       }
       throw error;
+    } finally {
+      clearInterval(heartbeat);
     }
   }
 }
